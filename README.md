@@ -58,12 +58,15 @@ See our [Contributing Guide](docs/CONTRIBUTING.md) for detailed installation, us
 2. **Connect**: Open Music Player and connect Spotify Premium
 3. **Enjoy**: Let AI analyze your project and set the perfect vibe!
 
+## 📜 Changelog 
+
+For project history and release notes, see [CHANGELOG.md](docs/CHANGELOG.md). 
+
 ## 📞 Support
 
 - 🐛 [Report Issues](https://github.com/Arunteja27/code-spa/issues)
 - 💡 [Feature Requests](https://github.com/Arunteja27/code-spa/issues/new?template=feature_request.md)
-- 📧 [Contact Support](https://arunteja27.github.io/arun-Website/#contact)
-- 📝 [Changelog](docs/CHANGELOG.md)
+- 📧 [Contact Support](https://arunteja27.github.io/arun-Website/#contact:~:text=GitHub%20Link-,Get%20in%20touch,-Any%20questions%3F%20Contact)
 
 ## 📄 License
 
