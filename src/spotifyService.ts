@@ -38,7 +38,7 @@ export class SpotifyService {
     private currentUser: SpotifyUser | null = null;
     private authServer: http.Server | null = null;
     
-    // Get from VS Code settings - users configure their own app
+    // grab creds from env vars or vscode settings - user configures their own app
     private readonly CLIENT_ID: string;
     private readonly CLIENT_SECRET: string;
     private readonly REDIRECT_URI = 'http://127.0.0.1:8888/callback';
@@ -56,10 +56,9 @@ export class SpotifyService {
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
         
-        // Get credentials from VS Code settings
         const config = vscode.workspace.getConfiguration('codeSpa');
-        this.CLIENT_ID = config.get('spotify.clientId', '');
-        this.CLIENT_SECRET = config.get('spotify.clientSecret', '');
+        this.CLIENT_ID = process.env.SPOTIFY_CLIENT_ID || config.get('spotify.clientId', '');
+        this.CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET || config.get('spotify.clientSecret', '');
         
         if (!this.CLIENT_ID || !this.CLIENT_SECRET) {
             vscode.window.showWarningMessage(
@@ -78,27 +77,22 @@ export class SpotifyService {
             redirectUri: this.REDIRECT_URI
         });
 
-        // Try to restore previous session
         this.restoreSession();
     }
 
     async authenticate(): Promise<boolean> {
         try {
-            // Check if we already have valid tokens
             if (this.isAuthenticated) {
                 return true;
             }
 
             const authUrl = this.spotifyApi.createAuthorizeURL(this.SCOPES, 'code-spa-state');
             
-            // Start local server to catch the callback
             await this.startAuthServer();
-            
-            // Open browser for user authentication
             await vscode.env.openExternal(vscode.Uri.parse(authUrl));
             
+            // wait for auth to complete
             return new Promise((resolve) => {
-                // Wait for authentication completion
                 const checkAuth = setInterval(() => {
                     if (this.isAuthenticated) {
                         clearInterval(checkAuth);
@@ -106,7 +100,7 @@ export class SpotifyService {
                     }
                 }, 1000);
 
-                // Timeout after 2 minutes
+                // timeout after 2 minutes
                 setTimeout(() => {
                     clearInterval(checkAuth);
                     if (!this.isAuthenticated) {
@@ -148,16 +142,13 @@ export class SpotifyService {
 
                     if (code) {
                         try {
-                            // Exchange code for tokens
+                            // swap auth code for tokens
                             const data = await this.spotifyApi.authorizationCodeGrant(code);
                             
                             this.spotifyApi.setAccessToken(data.body.access_token);
                             this.spotifyApi.setRefreshToken(data.body.refresh_token);
                             
-                            // Store tokens securely
                             await this.storeTokens(data.body.access_token, data.body.refresh_token);
-                            
-                            // Get user info
                             await this.fetchUserInfo();
                             
                             this.isAuthenticated = true;
@@ -180,7 +171,6 @@ export class SpotifyService {
                                 </html>
                             `);
 
-                            // Close server after successful auth
                             setTimeout(() => {
                                 this.authServer?.close();
                             }, 1000);
@@ -203,15 +193,7 @@ export class SpotifyService {
                 }
             });
 
-            this.authServer.listen(8888, '127.0.0.1', () => {
-                console.log('🎵 Spotify auth server started on http://127.0.0.1:8888');
-                resolve();
-            });
-
-            this.authServer.on('error', (error) => {
-                console.error('Auth server error:', error);
-                reject(error);
-            });
+            this.authServer.listen(8888, '127.0.0.1', resolve);
         });
     }
 
@@ -231,31 +213,26 @@ export class SpotifyService {
     }
 
     async getUserPlaylists(): Promise<SpotifyPlaylist[]> {
-        if (!this.isAuthenticated) {
-            throw new Error('Not authenticated with Spotify');
-        }
+        if (!this.isAuthenticated) return [];
 
         try {
-            const playlists = await this.spotifyApi.getUserPlaylists();
-            const result: SpotifyPlaylist[] = [];
+            const response = await this.spotifyApi.getUserPlaylists();
+            const playlists: SpotifyPlaylist[] = [];
 
-            for (const playlist of playlists.body.items) {
-                if (playlist.tracks.total > 0) {
-                    const tracks = await this.getPlaylistTracks(playlist.id);
-                    result.push({
-                        id: playlist.id,
-                        name: playlist.name,
-                        description: playlist.description || '',
-                        tracks: tracks,
-                        imageUrl: playlist.images?.[0]?.url,
-                        owner: playlist.owner.display_name || playlist.owner.id
-                    });
-                }
+            for (const playlist of response.body.items) {
+                const tracks = await this.getPlaylistTracks(playlist.id);
+                playlists.push({
+                    id: playlist.id,
+                    name: playlist.name,
+                    description: playlist.description || '',
+                    tracks,
+                    imageUrl: playlist.images?.[0]?.url,
+                    owner: playlist.owner.display_name || playlist.owner.id
+                });
             }
 
-            return result;
+            return playlists;
         } catch (error) {
-            console.error('Failed to fetch playlists:', error);
             await this.handleApiError(error);
             return [];
         }
@@ -263,8 +240,8 @@ export class SpotifyService {
 
     private async getPlaylistTracks(playlistId: string): Promise<SpotifyTrack[]> {
         try {
-            const tracks = await this.spotifyApi.getPlaylistTracks(playlistId);
-            return tracks.body.items
+            const response = await this.spotifyApi.getPlaylistTracks(playlistId);
+            return response.body.items
                 .filter(item => item.track && item.track.type === 'track')
                 .map(item => ({
                     id: item.track!.id,
@@ -277,96 +254,120 @@ export class SpotifyService {
                     uri: item.track!.uri
                 }));
         } catch (error) {
-            console.error(`Failed to fetch tracks for playlist ${playlistId}:`, error);
+            console.error(`Failed to get tracks for playlist ${playlistId}:`, error);
             return [];
         }
     }
 
     async playTrack(trackUri: string): Promise<boolean> {
-        if (!this.isAuthenticated) {
-            throw new Error('Not authenticated with Spotify');
-        }
-
-        if (!this.currentUser?.isPremium) {
-            vscode.window.showWarningMessage('🎵 Spotify Premium required for playback control. You can still browse playlists and tracks!');
-            return false;
-        }
+        if (!this.isAuthenticated) return false;
 
         try {
-            await this.spotifyApi.play({ uris: [trackUri] });
+            // check for active devices first - this is the key part
+            const devicesResponse = await this.spotifyApi.getMyDevices();
+            const devices = devicesResponse.body.devices;
+
+            if (devices.length === 0) {
+                vscode.window.showErrorMessage(
+                    '🎵 No Spotify devices found. Please open Spotify on any device first.',
+                    'Open Spotify'
+                ).then((selection) => {
+                    if (selection === 'Open Spotify') {
+                        vscode.env.openExternal(vscode.Uri.parse('spotify:'));
+                    }
+                });
+                return false;
+            }
+
+            let activeDevice = devices.find(device => device.is_active);
+
+            if (!activeDevice) {
+                // try to activate the first available device
+                const availableDevice = devices.find(device => !device.is_restricted);
+                if (availableDevice) {
+                    await this.spotifyApi.transferMyPlayback([availableDevice.id!]);
+                    // give it a moment to transfer
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    activeDevice = availableDevice;
+                } else {
+                    vscode.window.showErrorMessage(
+                        '🎵 No active Spotify device found. Please start playing music on Spotify first.',
+                        'Open Spotify'
+                    ).then((selection) => {
+                        if (selection === 'Open Spotify') {
+                            vscode.env.openExternal(vscode.Uri.parse('spotify:'));
+                        }
+                    });
+                    return false;
+                }
+            }
+
+            await this.spotifyApi.play({
+                uris: [trackUri],
+                device_id: activeDevice.id || undefined
+            });
             return true;
         } catch (error) {
-            console.error('Failed to play track:', error);
             await this.handleApiError(error);
             return false;
         }
     }
 
     async pausePlayback(): Promise<boolean> {
-        if (!this.isAuthenticated || !this.currentUser?.isPremium) {
-            return false;
-        }
+        if (!this.isAuthenticated) return false;
 
         try {
             await this.spotifyApi.pause();
             return true;
         } catch (error) {
-            console.error('Failed to pause playback:', error);
+            await this.handleApiError(error);
             return false;
         }
     }
 
     async resumePlayback(): Promise<boolean> {
-        if (!this.isAuthenticated || !this.currentUser?.isPremium) {
-            return false;
-        }
+        if (!this.isAuthenticated) return false;
 
         try {
             await this.spotifyApi.play();
             return true;
         } catch (error) {
-            console.error('Failed to resume playback:', error);
+            await this.handleApiError(error);
             return false;
         }
     }
 
     async skipToNext(): Promise<boolean> {
-        if (!this.isAuthenticated || !this.currentUser?.isPremium) {
-            return false;
-        }
+        if (!this.isAuthenticated) return false;
 
         try {
             await this.spotifyApi.skipToNext();
             return true;
         } catch (error) {
-            console.error('Failed to skip to next:', error);
+            await this.handleApiError(error);
             return false;
         }
     }
 
     async skipToPrevious(): Promise<boolean> {
-        if (!this.isAuthenticated || !this.currentUser?.isPremium) {
-            return false;
-        }
+        if (!this.isAuthenticated) return false;
 
         try {
             await this.spotifyApi.skipToPrevious();
             return true;
         } catch (error) {
-            console.error('Failed to skip to previous:', error);
+            await this.handleApiError(error);
             return false;
         }
     }
 
     async getCurrentlyPlaying(): Promise<SpotifyTrack | null> {
-        if (!this.isAuthenticated) {
-            return null;
-        }
+        if (!this.isAuthenticated) return null;
 
         try {
-            const current = await this.spotifyApi.getMyCurrentPlayingTrack();
-            if (current.body.item && current.body.item.type === 'track') {
-                const track = current.body.item;
+            const response = await this.spotifyApi.getMyCurrentPlayingTrack();
+            if (response.body.item && response.body.item.type === 'track') {
+                const track = response.body.item;
                 return {
                     id: track.id,
                     name: track.name,
@@ -378,57 +379,62 @@ export class SpotifyService {
                     uri: track.uri
                 };
             }
+            return null;
         } catch (error) {
-            console.error('Failed to get currently playing:', error);
+            await this.handleApiError(error);
+            return null;
         }
-
-        return null;
     }
 
     private async handleApiError(error: any): Promise<void> {
         if (error.statusCode === 401) {
-            // Token expired, try to refresh
+            // token expired, try to refresh
             try {
                 const data = await this.spotifyApi.refreshAccessToken();
                 this.spotifyApi.setAccessToken(data.body.access_token);
                 await this.storeTokens(data.body.access_token, this.spotifyApi.getRefreshToken()!);
             } catch (refreshError) {
-                console.error('Failed to refresh token:', refreshError);
                 this.isAuthenticated = false;
-                await this.clearTokens();
-                vscode.window.showErrorMessage('Spotify session expired. Please reconnect to Spotify.');
+                this.currentUser = null;
+                vscode.window.showErrorMessage('🎵 Spotify session expired. Please reconnect.');
             }
+        } else {
+            console.error('Spotify API error:', error);
         }
     }
 
     private async storeTokens(accessToken: string, refreshToken: string): Promise<void> {
-        await this.context.secrets.store('spotify_access_token', accessToken);
-        await this.context.secrets.store('spotify_refresh_token', refreshToken);
+        await this.context.secrets.store('spotifyAccessToken', accessToken);
+        await this.context.secrets.store('spotifyRefreshToken', refreshToken);
     }
 
     private async restoreSession(): Promise<void> {
         try {
-            const accessToken = await this.context.secrets.get('spotify_access_token');
-            const refreshToken = await this.context.secrets.get('spotify_refresh_token');
+            const accessToken = await this.context.secrets.get('spotifyAccessToken');
+            const refreshToken = await this.context.secrets.get('spotifyRefreshToken');
 
             if (accessToken && refreshToken) {
                 this.spotifyApi.setAccessToken(accessToken);
                 this.spotifyApi.setRefreshToken(refreshToken);
 
-                // Test if token is still valid
-                await this.fetchUserInfo();
-                this.isAuthenticated = true;
-                console.log('🎵 Restored Spotify session');
+                // test if tokens are still valid
+                try {
+                    await this.fetchUserInfo();
+                    this.isAuthenticated = true;
+                    console.log('🎵 Restored Spotify session');
+                } catch (error) {
+                    // tokens expired, clear them
+                    await this.clearTokens();
+                }
             }
         } catch (error) {
-            console.log('🎵 No valid Spotify session to restore');
-            await this.clearTokens();
+            console.error('Failed to restore Spotify session:', error);
         }
     }
 
     private async clearTokens(): Promise<void> {
-        await this.context.secrets.delete('spotify_access_token');
-        await this.context.secrets.delete('spotify_refresh_token');
+        await this.context.secrets.delete('spotifyAccessToken');
+        await this.context.secrets.delete('spotifyRefreshToken');
         this.isAuthenticated = false;
         this.currentUser = null;
     }
@@ -445,7 +451,6 @@ export class SpotifyService {
         await this.clearTokens();
         this.spotifyApi.resetAccessToken();
         this.spotifyApi.resetRefreshToken();
-        vscode.window.showInformationMessage('🎵 Disconnected from Spotify');
     }
 
     dispose(): void {
