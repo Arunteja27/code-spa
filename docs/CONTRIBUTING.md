@@ -27,9 +27,6 @@ We welcome contributions! This guide will help you get started with development 
 4. **Analyze Project**: Click "Analyze Current Project" to let AI set the perfect background
 5. **Customize**: Use the theme customizer to create your perfect coding environment
 
-![Screenshot 2025-06-07 020920](https://github.com/user-attachments/assets/6a18fb01-a1a5-4127-9712-3ac7287df6e5)     
-*Fully integrated Spotify music player with tile-based navigation and real-time controls*
-
 ### Commands
 - `Code Spa: Open Control Panel` - Access the main control interface
 - `Code Spa: Toggle Dynamic Background` - Enable/disable dynamic backgrounds
