@@ -28,6 +28,7 @@ export class MusicPlayer {
     private currentTrackIndex: number = 0;
     private syncInterval: NodeJS.Timeout | null = null;
     private currentSpotifyVolume: number = 50;
+    private lastVolumeUpdate: number = 0;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
@@ -135,9 +136,16 @@ export class MusicPlayer {
         this.syncInterval = setInterval(async () => {
             const state = await this.spotifyService.getCurrentPlaybackState();
             if (state) {
-                this.currentSpotifyVolume = state.volume;
-                this.isPlaying = state.isPlaying;
-                this.updateWebview();
+                const newVolume = state.volume;
+                const newPlayingState = state.isPlaying;
+                
+                // only update webview if something actually changed
+                if (newVolume !== this.currentSpotifyVolume || newPlayingState !== this.isPlaying) {
+                    this.currentSpotifyVolume = newVolume;
+                    this.isPlaying = newPlayingState;
+                    this.lastVolumeUpdate = Date.now();
+                    this.updateWebview();
+                }
             }
         }, 1000);
     }
@@ -551,6 +559,35 @@ export class MusicPlayer {
 
             <script>
                 const vscode = acquireVsCodeApi();
+                let tracksContainer;
+
+                // save scroll position before any updates
+                function saveScrollPosition() {
+                    tracksContainer = document.querySelector('.tracks-container');
+                    if (tracksContainer) {
+                        const scrollTop = tracksContainer.scrollTop;
+                        vscode.setState({ scrollTop: scrollTop });
+                    }
+                }
+
+                // restore scroll position after updates
+                function restoreScrollPosition() {
+                    const state = vscode.getState();
+                    if (state && state.scrollTop && tracksContainer) {
+                        tracksContainer.scrollTop = state.scrollTop;
+                    }
+                }
+
+                // run after DOM loads
+                window.addEventListener('load', () => {
+                    tracksContainer = document.querySelector('.tracks-container');
+                    restoreScrollPosition();
+                    
+                    // save scroll position whenever user scrolls
+                    if (tracksContainer) {
+                        tracksContainer.addEventListener('scroll', saveScrollPosition);
+                    }
+                });
 
                 function connectSpotify() {
                     vscode.postMessage({ command: 'connectSpotify' });
@@ -562,11 +599,13 @@ export class MusicPlayer {
 
                 function selectPlaylist(playlistId) {
                     if (playlistId) {
+                        saveScrollPosition();
                         vscode.postMessage({ command: 'selectPlaylist', playlistId });
                     }
                 }
 
                 function playTrack(trackIndex) {
+                    saveScrollPosition();
                     vscode.postMessage({ command: 'playTrack', trackIndex });
                 }
 
@@ -750,8 +789,13 @@ export class MusicPlayer {
             const success = await this.spotifyService.playTrack(this.currentTrack.uri);
             if (success) {
                 this.isPlaying = true;
+                // small delay before updating to avoid scroll jump
+                setTimeout(() => {
+                    this.updateWebview();
+                }, 100);
+            } else {
+                this.updateWebview();
             }
-            this.updateWebview();
         }
     }
 
