@@ -46,8 +46,8 @@ Choose from 5 stunning theme presets or create your own:
 - **One-Click Actions**: Toggle features with single clicks
 - **Real-time Updates**: Live status indicators
 
-![Code Spa Control Panel](https://github.com/user-attachments/assets/control-panel-screenshot.png)
-*The main Code Spa control panel with quick access to all features*
+![Screenshot 2025-06-07 020508](https://github.com/user-attachments/assets/6baf7b02-ba07-462d-8e46-26fbe2233799)     
+*The Code Spa control panel with quick access to all features*
 
 ## 🚀 Quick Start
 
