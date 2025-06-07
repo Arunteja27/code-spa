@@ -27,7 +27,7 @@ We welcome contributions! This guide will help you get started with development 
 4. **Analyze Project**: Click "Analyze Current Project" to let AI set the perfect background
 5. **Customize**: Use the theme customizer to create your perfect coding environment
 
-![Spotify Music Player](https://github.com/user-attachments/assets/music-player-screenshot.png)
+![Screenshot 2025-06-07 020920](https://github.com/user-attachments/assets/6a18fb01-a1a5-4127-9712-3ac7287df6e5)     
 *Fully integrated Spotify music player with tile-based navigation and real-time controls*
 
 ### Commands
@@ -137,5 +137,3 @@ Have an idea for Code Spa? Open an issue with the "enhancement" label!
 - Volume control is read-only (synced from Spotify desktop app)
 
 ---
-
-For project history and release notes, see [CHANGELOG.md](CHANGELOG.md). 
