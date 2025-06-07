@@ -18,7 +18,7 @@ Transform your VS Code experience into an immersive coding paradise with AI-powe
   - 🕒 **Recently Played**: Your last 50 recently played tracks
   - 🔥 **Your Top Tracks**: Your top tracks from the last 6 months
   - 🎵 **Playlists**: All your personal playlists with artwork
-- **Playback Controls**: Full prev/play/pause/next controls with Font Awesome icons
+- **Playback Controls**: Full prev/play/pause/next controls with Font Awesome icons <br> 
 
 ![Screenshot 2025-06-07 020920](https://github.com/user-attachments/assets/6a18fb01-a1a5-4127-9712-3ac7287df6e5)     
 *Fully integrated Spotify music player with tile-based navigation and real-time controls*
