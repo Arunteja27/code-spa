@@ -83,12 +83,26 @@ function registerCommands(context: vscode.ExtensionContext) {
 		uiCustomizer.showCustomizationPanel();
 	});
 
+	const connectSpotify = vscode.commands.registerCommand('code-spa.connectSpotify', async () => {
+		vscode.window.showInformationMessage('🎵 Connecting to Spotify...');
+		const success = await musicPlayer.connectSpotify();
+		if (success) {
+			vscode.window.showInformationMessage('🎵 Successfully connected to Spotify! Your playlists are now available.');
+		}
+	});
+
+	const disconnectSpotify = vscode.commands.registerCommand('code-spa.disconnectSpotify', async () => {
+		await musicPlayer.disconnectSpotify();
+	});
+
 	context.subscriptions.push(
 		openControlPanel,
 		toggleBackground,
 		openMusicPlayer,
 		analyzeProject,
-		customizeTheme
+		customizeTheme,
+		connectSpotify,
+		disconnectSpotify
 	);
 }
 
@@ -153,8 +167,6 @@ async function handleConfigurationChange() {
 	if (config.get('music.enabled', false)) {
 		musicPlayer.initialize();
 		musicPlayer.setVolume(config.get('music.volume', 0.3));
-	} else {
-		musicPlayer.stop();
 	}
 
 	const themePreset = config.get('theme.preset', 'cyberpunk');

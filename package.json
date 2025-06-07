@@ -16,7 +16,14 @@
     "Other",
     "Visualization"
   ],
-  "keywords": ["background", "music", "ai", "customization", "theme", "ambient"],
+  "keywords": [
+    "background",
+    "music",
+    "ai",
+    "customization",
+    "theme",
+    "ambient"
+  ],
   "activationEvents": [
     "onStartupFinished"
   ],
@@ -46,6 +53,16 @@
       {
         "command": "code-spa.customizeTheme",
         "title": "Customize Theme",
+        "category": "Code Spa"
+      },
+      {
+        "command": "code-spa.connectSpotify",
+        "title": "Connect to Spotify",
+        "category": "Code Spa"
+      },
+      {
+        "command": "code-spa.disconnectSpotify",
+        "title": "Disconnect from Spotify",
         "category": "Code Spa"
       }
     ],
@@ -88,9 +105,26 @@
         },
         "codeSpa.theme.preset": {
           "type": "string",
-          "enum": ["cyberpunk", "nature", "space", "minimal", "retro", "custom"],
+          "enum": [
+            "cyberpunk",
+            "nature",
+            "space",
+            "minimal",
+            "retro",
+            "custom"
+          ],
           "default": "cyberpunk",
           "description": "Theme preset"
+        },
+        "codeSpa.spotify.clientId": {
+          "type": "string",
+          "default": "",
+          "description": "Spotify App Client ID (from your Spotify Developer Dashboard)"
+        },
+        "codeSpa.spotify.clientSecret": {
+          "type": "string",
+          "default": "",
+          "description": "Spotify App Client Secret (keep this private!)"
         }
       }
     },
@@ -110,6 +144,12 @@
         },
         {
           "command": "code-spa.customizeTheme"
+        },
+        {
+          "command": "code-spa.connectSpotify"
+        },
+        {
+          "command": "code-spa.disconnectSpotify"
         }
       ]
     },
@@ -142,20 +182,22 @@
     "test": "vscode-test"
   },
   "dependencies": {
-    "openai": "^4.24.1",
+    "@types/spotify-web-api-node": "^5.0.11",
     "axios": "^1.6.2",
     "cheerio": "^1.0.0-rc.12",
-    "chokidar": "^3.5.3"
+    "chokidar": "^3.5.3",
+    "openai": "^4.24.1",
+    "spotify-web-api-node": "^5.0.2"
   },
   "devDependencies": {
-    "@types/vscode": "^1.98.0",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
+    "@types/vscode": "^1.98.0",
     "@typescript-eslint/eslint-plugin": "^8.25.0",
     "@typescript-eslint/parser": "^8.25.0",
-    "eslint": "^9.21.0",
-    "typescript": "^5.7.3",
     "@vscode/test-cli": "^0.0.10",
-    "@vscode/test-electron": "^2.4.1"
+    "@vscode/test-electron": "^2.4.1",
+    "eslint": "^9.21.0",
+    "typescript": "^5.7.3"
   }
 }
