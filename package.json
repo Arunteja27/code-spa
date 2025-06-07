@@ -182,10 +182,12 @@
     "test": "vscode-test"
   },
   "dependencies": {
+    "@types/dotenv": "^8.2.3",
     "@types/spotify-web-api-node": "^5.0.11",
     "axios": "^1.6.2",
     "cheerio": "^1.0.0-rc.12",
     "chokidar": "^3.5.3",
+    "dotenv": "^16.5.0",
     "openai": "^4.24.1",
     "spotify-web-api-node": "^5.0.2"
   },
