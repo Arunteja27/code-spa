@@ -25,6 +25,9 @@ Transform your VS Code experience into an immersive coding paradise with AI-powe
 - **Now Playing Display**: See current track with artist information
 - **Clean Notifications**: Minimal notifications only for connection status
 
+![Screenshot 2025-06-07 020920](https://github.com/user-attachments/assets/6a18fb01-a1a5-4127-9712-3ac7287df6e5)     
+*Fully integrated Spotify music player with tile-based navigation and real-time controls*
+
 ### 🎨 Customizable UI Themes
 Choose from 5 stunning theme presets or create your own:
 
