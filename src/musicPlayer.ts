@@ -29,6 +29,11 @@ export class MusicPlayer {
     private syncInterval: NodeJS.Timeout | null = null;
     private currentSpotifyVolume: number = 50;
     private lastVolumeUpdate: number = 0;
+    private currentView: 'library' | 'category' | 'playlists' | 'playlist-songs' = 'library';
+    private currentCategory: 'liked-songs' | 'recently-played' | 'top-tracks' | 'playlists' | null = null;
+    private likedSongs: SpotifyTrack[] = [];
+    private recentlyPlayed: SpotifyTrack[] = [];
+    private topTracks: SpotifyTrack[] = [];
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
@@ -83,20 +88,21 @@ export class MusicPlayer {
 
     private async loadSpotifyPlaylists(): Promise<void> {
         try {
-            this.spotifyPlaylists = await this.spotifyService.getUserPlaylists();
-            console.log(`🎵 Loaded ${this.spotifyPlaylists.length} Spotify playlists`);
+            const allContent = await this.spotifyService.getUserPlaylists();
             
-            // auto-select first playlist if we don't have one
-            if (this.spotifyPlaylists.length > 0 && !this.currentPlaylist) {
-                this.currentPlaylist = this.spotifyPlaylists[0];
-                this.currentTrackIndex = 0;
-                if (this.currentPlaylist.tracks.length > 0) {
-                    this.currentTrack = this.currentPlaylist.tracks[0];
-                }
-                console.log(`🎵 Auto-selected playlist: ${this.currentPlaylist.name} with ${this.currentPlaylist.tracks.length} tracks`);
-            }
+            // separate special collections from regular playlists
+            this.likedSongs = allContent.find(p => p.id === 'liked-songs')?.tracks || [];
+            this.recentlyPlayed = allContent.find(p => p.id === 'recently-played')?.tracks || [];
+            this.topTracks = allContent.find(p => p.id === 'top-tracks')?.tracks || [];
+            
+            // keep only regular playlists
+            this.spotifyPlaylists = allContent.filter(p => 
+                !['liked-songs', 'recently-played', 'top-tracks'].includes(p.id)
+            );
+            
+            console.log(`🎵 Loaded ${this.likedSongs.length} liked songs, ${this.recentlyPlayed.length} recent tracks, ${this.topTracks.length} top tracks, ${this.spotifyPlaylists.length} playlists`);
         } catch (error) {
-            console.error('Failed to load Spotify playlists:', error);
+            console.error('Failed to load Spotify content:', error);
         }
     }
 
@@ -301,6 +307,78 @@ export class MusicPlayer {
                     color: white;
                 }
 
+                .library-tiles {
+                    display: grid;
+                    grid-template-columns: repeat(2, 1fr);
+                    gap: 15px;
+                    margin-bottom: 25px;
+                }
+
+                .library-tile {
+                    background: rgba(0, 0, 0, 0.4);
+                    backdrop-filter: blur(10px);
+                    border-radius: 12px;
+                    padding: 20px;
+                    text-align: center;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                    border: 1px solid rgba(255, 255, 255, 0.1);
+                    position: relative;
+                    overflow: hidden;
+                }
+
+                .library-tile:hover {
+                    background: rgba(255, 255, 255, 0.1);
+                    transform: translateY(-3px);
+                    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+                }
+
+                .library-tile .icon {
+                    font-size: 2.5rem;
+                    margin-bottom: 10px;
+                    display: block;
+                }
+
+                .tile-image {
+                    width: 80px;
+                    height: 80px;
+                    border-radius: 8px;
+                    margin-bottom: 10px;
+                    object-fit: cover;
+                    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+                    transition: transform 0.3s ease;
+                }
+
+                .library-tile:hover .tile-image {
+                    transform: scale(1.05);
+                }
+
+                .library-tile .title {
+                    font-weight: 600;
+                    font-size: 1.1rem;
+                    margin-bottom: 5px;
+                }
+
+                .library-tile .count {
+                    font-size: 0.9rem;
+                    opacity: 0.8;
+                }
+
+                .back-btn {
+                    background: rgba(255, 255, 255, 0.2);
+                    border: none;
+                    border-radius: 8px;
+                    padding: 8px 15px;
+                    color: white;
+                    cursor: pointer;
+                    margin-bottom: 15px;
+                    transition: all 0.3s ease;
+                }
+
+                .back-btn:hover {
+                    background: rgba(255, 255, 255, 0.3);
+                }
+
                 .tracks-container {
                     max-height: 300px;
                     overflow-y: auto;
@@ -501,43 +579,7 @@ export class MusicPlayer {
                     `}
                 </div>
 
-                ${isSpotifyConnected && playlists.length > 0 ? `
-                    <div class="playlist-section">
-                        <select class="playlist-dropdown" onchange="selectPlaylist(this.value)">
-                            <option value="">Select a playlist...</option>
-                            ${playlistOptions}
-                        </select>
-                        <div class="playlist-info">
-                            ${playlists.length} playlist${playlists.length !== 1 ? 's' : ''} available
-                        </div>
-                    </div>
-
-                    <div class="tracks-container">
-                        ${tracksList}
-                    </div>
-
-                    ${this.currentTrack ? `
-                        <div class="current-track">
-                            <div class="now-playing">Now Playing</div>
-                            <div class="current-track-name">${this.currentTrack.name}</div>
-                            <div class="current-track-artist">${this.currentTrack.artist}</div>
-                        </div>
-                    ` : ''}
-
-                    <div class="controls">
-                        <button class="control-btn" onclick="previousTrack()">⏮️</button>
-                        <button class="control-btn play-btn" onclick="togglePlayback()">
-                            ${this.isPlaying ? '⏸️' : '▶️'}
-                        </button>
-                        <button class="control-btn" onclick="nextTrack()">⏭️</button>
-                    </div>
-
-                    ${user && !user.isPremium ? `
-                        <div class="premium-notice">
-                            ⚠️ Playback controls require Spotify Premium
-                        </div>
-                    ` : ''}
-                ` : ''}
+                ${isSpotifyConnected ? this.getContentHTML() : ''}
 
                 <div class="volume-container">
                     <label>Volume: ${this.currentSpotifyVolume}% (Spotify App)</label>
@@ -624,6 +666,16 @@ export class MusicPlayer {
                 function setVolume(volume) {
                     vscode.postMessage({ command: 'setVolume', volume: parseFloat(volume) });
                 }
+
+                function selectCategory(category) {
+                    saveScrollPosition();
+                    vscode.postMessage({ command: 'selectCategory', category });
+                }
+
+                function goBack() {
+                    saveScrollPosition();
+                    vscode.postMessage({ command: 'goBack' });
+                }
             </script>
         </body>
         </html>
@@ -695,6 +747,12 @@ export class MusicPlayer {
                 break;
             case 'playTrack':
                 await this.playTrack(message.trackIndex);
+                break;
+            case 'selectCategory':
+                this.selectCategory(message.category);
+                break;
+            case 'goBack':
+                this.goBack();
                 break;
         }
     }
@@ -770,6 +828,7 @@ export class MusicPlayer {
         if (playlist) {
             this.currentPlaylist = playlist;
             this.currentTrackIndex = 0;
+            this.currentView = 'playlist-songs';
             if (playlist.tracks.length > 0) {
                 this.currentTrack = playlist.tracks[0];
             }
@@ -797,6 +856,239 @@ export class MusicPlayer {
                 this.updateWebview();
             }
         }
+    }
+
+    private selectCategory(category: string): void {
+        this.currentCategory = category as 'liked-songs' | 'recently-played' | 'top-tracks' | 'playlists';
+        
+        if (category === 'playlists') {
+            this.currentView = 'playlists';
+        } else {
+            this.currentView = 'category';
+            // Set the current playlist to the selected category for playing tracks
+            this.currentPlaylist = {
+                id: category,
+                name: this.getCategoryTitle(category),
+                tracks: this.getCategoryTracks(category),
+                description: this.getCategoryTitle(category),
+                owner: 'Spotify'
+            };
+        }
+        
+        this.currentTrackIndex = 0;
+        this.updateWebview();
+    }
+
+    private goBack(): void {
+        if (this.currentView === 'category' || this.currentView === 'playlists') {
+            this.currentView = 'library';
+            this.currentCategory = null;
+            this.currentPlaylist = null;
+        } else if (this.currentView === 'playlist-songs') {
+            this.currentView = 'playlists';
+        }
+        
+        this.currentTrackIndex = 0;
+        this.updateWebview();
+    }
+
+    private getCategoryTitle(category: string): string {
+        switch (category) {
+            case 'liked-songs':
+                return '💚 Liked Songs';
+            case 'recently-played':
+                return '🕒 Recently Played';
+            case 'top-tracks':
+                return '🔥 Your Top Tracks';
+            default:
+                return 'Unknown';
+        }
+    }
+
+    private getCategoryTracks(category: string): SpotifyTrack[] {
+        switch (category) {
+            case 'liked-songs':
+                return this.likedSongs;
+            case 'recently-played':
+                return this.recentlyPlayed;
+            case 'top-tracks':
+                return this.topTracks;
+            default:
+                return [];
+        }
+    }
+
+    private getContentHTML(): string {
+        const user = this.spotifyService.getUser();
+
+        switch (this.currentView) {
+            case 'library':
+                return this.getLibraryTilesHTML();
+            case 'category':
+                return this.getCategoryContentHTML();
+            case 'playlists':
+                return this.getPlaylistsGridHTML();
+            case 'playlist-songs':
+                return this.getPlaylistSongsHTML();
+            default:
+                return this.getLibraryTilesHTML();
+        }
+    }
+
+    private getLibraryTilesHTML(): string {
+        return `
+            <div class="library-tiles">
+                <div class="library-tile" onclick="selectCategory('liked-songs')">
+                    <span class="icon">💚</span>
+                    <div class="title">Liked Songs</div>
+                    <div class="count">${this.likedSongs.length} songs</div>
+                </div>
+                <div class="library-tile" onclick="selectCategory('recently-played')">
+                    <span class="icon">🕒</span>
+                    <div class="title">Recently Played</div>
+                    <div class="count">${this.recentlyPlayed.length} songs</div>
+                </div>
+                <div class="library-tile" onclick="selectCategory('top-tracks')">
+                    <span class="icon">🔥</span>
+                    <div class="title">Your Top Tracks</div>
+                    <div class="count">${this.topTracks.length} songs</div>
+                </div>
+                <div class="library-tile" onclick="selectCategory('playlists')">
+                    <span class="icon">🎵</span>
+                    <div class="title">Playlists</div>
+                    <div class="count">${this.spotifyPlaylists.length} playlists</div>
+                </div>
+            </div>
+        `;
+    }
+
+    private getCategoryContentHTML(): string {
+        const user = this.spotifyService.getUser();
+        let tracks: SpotifyTrack[] = [];
+        let title = '';
+        
+        switch (this.currentCategory) {
+            case 'liked-songs':
+                tracks = this.likedSongs;
+                title = '💚 Liked Songs';
+                break;
+            case 'recently-played':
+                tracks = this.recentlyPlayed;
+                title = '🕒 Recently Played';
+                break;
+            case 'top-tracks':
+                tracks = this.topTracks;
+                title = '🔥 Your Top Tracks';
+                break;
+            default:
+                return this.getLibraryTilesHTML();
+        }
+
+        const tracksList = tracks.map((track, index) => {
+            const duration = this.formatDuration(track.duration);
+            return `
+                <div class="track-item ${index === this.currentTrackIndex ? 'active' : ''}" 
+                     onclick="playTrack(${index})">
+                    <div class="track-image">
+                        ${track.imageUrl ? `<img src="${track.imageUrl}" alt="Album Art">` : '🎵'}
+                    </div>
+                    <div class="track-info">
+                        <div class="track-name">${track.name}</div>
+                        <div class="track-artist">${track.artist}</div>
+                    </div>
+                    <div class="track-duration">${duration}</div>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <button class="back-btn" onclick="goBack()">← Back to Library</button>
+            <h3 style="margin-bottom: 15px;">${title}</h3>
+            <div class="tracks-container">
+                ${tracksList || '<p style="text-align: center; opacity: 0.7;">No tracks available</p>'}
+            </div>
+            ${this.getPlaybackControlsHTML(user)}
+        `;
+    }
+
+    private getPlaylistsGridHTML(): string {
+        const playlistTiles = this.spotifyPlaylists.map(playlist => `
+            <div class="library-tile" onclick="selectPlaylist('${playlist.id}')">
+                ${playlist.imageUrl ? 
+                    `<img src="${playlist.imageUrl}" alt="${playlist.name}" class="tile-image">` : 
+                    '<span class="icon">🎵</span>'
+                }
+                <div class="title">${playlist.name}</div>
+                <div class="count">${playlist.tracks.length} songs</div>
+            </div>
+        `).join('');
+
+        return `
+            <button class="back-btn" onclick="goBack()">← Back to Library</button>
+            <h3 style="margin-bottom: 15px;">🎵 Your Playlists</h3>
+            <div class="library-tiles">
+                ${playlistTiles}
+            </div>
+        `;
+    }
+
+    private getPlaylistSongsHTML(): string {
+        const user = this.spotifyService.getUser();
+        if (!this.currentPlaylist) {
+            return this.getLibraryTilesHTML();
+        }
+
+        const tracksList = this.currentPlaylist.tracks.map((track, index) => {
+            const duration = this.formatDuration(track.duration);
+            return `
+                <div class="track-item ${index === this.currentTrackIndex ? 'active' : ''}" 
+                     onclick="playTrack(${index})">
+                    <div class="track-image">
+                        ${track.imageUrl ? `<img src="${track.imageUrl}" alt="Album Art">` : '🎵'}
+                    </div>
+                    <div class="track-info">
+                        <div class="track-name">${track.name}</div>
+                        <div class="track-artist">${track.artist}</div>
+                    </div>
+                    <div class="track-duration">${duration}</div>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <button class="back-btn" onclick="goBack()">← Back to Playlists</button>
+            <h3 style="margin-bottom: 15px;">🎵 ${this.currentPlaylist.name}</h3>
+            <div class="tracks-container">
+                ${tracksList}
+            </div>
+            ${this.getPlaybackControlsHTML(user)}
+        `;
+    }
+
+    private getPlaybackControlsHTML(user: SpotifyUser | null): string {
+        return `
+            ${this.currentTrack ? `
+                <div class="current-track">
+                    <div class="now-playing">Now Playing</div>
+                    <div class="current-track-name">${this.currentTrack.name}</div>
+                    <div class="current-track-artist">${this.currentTrack.artist}</div>
+                </div>
+            ` : ''}
+
+            <div class="controls">
+                <button class="control-btn" onclick="previousTrack()">⏮️</button>
+                <button class="control-btn play-btn" onclick="togglePlayback()">
+                    ${this.isPlaying ? '⏸️' : '▶️'}
+                </button>
+                <button class="control-btn" onclick="nextTrack()">⏭️</button>
+            </div>
+
+            ${user && !user.isPremium ? `
+                <div class="premium-notice">
+                    ⚠️ Playback controls require Spotify Premium
+                </div>
+            ` : ''}
+        `;
     }
 
     dispose(): void {

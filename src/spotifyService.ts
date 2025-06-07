@@ -50,6 +50,9 @@ export class SpotifyService {
         'user-read-playback-state',
         'user-modify-playback-state',
         'user-read-currently-playing',
+        'user-library-read',
+        'user-read-recently-played',
+        'user-top-read',
         'streaming'
     ];
 
@@ -216,9 +219,49 @@ export class SpotifyService {
         if (!this.isAuthenticated) return [];
 
         try {
-            const response = await this.spotifyApi.getUserPlaylists();
             const playlists: SpotifyPlaylist[] = [];
 
+            // add liked songs as a special "playlist"
+            const likedSongs = await this.getLikedSongs();
+            if (likedSongs.length > 0) {
+                playlists.push({
+                    id: 'liked-songs',
+                    name: '💚 Liked Songs',
+                    description: `${likedSongs.length} liked songs`,
+                    tracks: likedSongs,
+                    imageUrl: undefined,
+                    owner: 'You'
+                });
+            }
+
+            // add recently played tracks
+            const recentTracks = await this.getRecentlyPlayed();
+            if (recentTracks.length > 0) {
+                playlists.push({
+                    id: 'recently-played',
+                    name: '🕒 Recently Played',
+                    description: `${recentTracks.length} recently played songs`,
+                    tracks: recentTracks,
+                    imageUrl: undefined,
+                    owner: 'You'
+                });
+            }
+
+            // add top tracks
+            const topTracks = await this.getTopTracks();
+            if (topTracks.length > 0) {
+                playlists.push({
+                    id: 'top-tracks',
+                    name: '🔥 Your Top Tracks',
+                    description: `${topTracks.length} of your most played songs`,
+                    tracks: topTracks,
+                    imageUrl: undefined,
+                    owner: 'You'
+                });
+            }
+
+            // add user's regular playlists
+            const response = await this.spotifyApi.getUserPlaylists();
             for (const playlist of response.body.items) {
                 const tracks = await this.getPlaylistTracks(playlist.id);
                 playlists.push({
@@ -238,11 +281,109 @@ export class SpotifyService {
         }
     }
 
+    private async getLikedSongs(): Promise<SpotifyTrack[]> {
+        try {
+            const tracks: SpotifyTrack[] = [];
+            let offset = 0;
+            const limit = 50;
+
+            // spotify returns liked songs in batches, so we need to paginate
+            while (true) {
+                const response = await this.spotifyApi.getMySavedTracks({ 
+                    limit, 
+                    offset 
+                });
+
+                const batch = response.body.items
+                    .filter(item => item.track && !item.track.is_local && item.track.id)
+                    .map(item => ({
+                        id: item.track.id,
+                        name: item.track.name,
+                        artist: item.track.artists.map(a => a.name).join(', '),
+                        album: item.track.album.name,
+                        duration: item.track.duration_ms,
+                        imageUrl: item.track.album.images?.[0]?.url,
+                        previewUrl: item.track.preview_url || undefined,
+                        uri: item.track.uri
+                    }));
+
+                tracks.push(...batch);
+
+                // if we got fewer tracks than the limit, we're done
+                if (response.body.items.length < limit) {
+                    break;
+                }
+
+                offset += limit;
+                // safety check to avoid infinite loops
+                if (offset > 2000) break;
+            }
+
+            return tracks;
+        } catch (error) {
+            console.error('Failed to get liked songs:', error);
+            return [];
+        }
+    }
+
+    private async getRecentlyPlayed(): Promise<SpotifyTrack[]> {
+        try {
+            const response = await this.spotifyApi.getMyRecentlyPlayedTracks({ limit: 50 });
+            // remove duplicates by track id
+            const uniqueTracks = new Map<string, SpotifyTrack>();
+            
+            response.body.items.forEach(item => {
+                if (item.track && !item.track.is_local && item.track.id && !uniqueTracks.has(item.track.id)) {
+                    uniqueTracks.set(item.track.id, {
+                        id: item.track.id,
+                        name: item.track.name,
+                        artist: item.track.artists.map(a => a.name).join(', '),
+                        album: item.track.album.name,
+                        duration: item.track.duration_ms,
+                        imageUrl: item.track.album.images?.[0]?.url,
+                        previewUrl: item.track.preview_url || undefined,
+                        uri: item.track.uri
+                    });
+                }
+            });
+
+            return Array.from(uniqueTracks.values());
+        } catch (error) {
+            console.error('Failed to get recently played:', error);
+            return [];
+        }
+    }
+
+    private async getTopTracks(): Promise<SpotifyTrack[]> {
+        try {
+            const response = await this.spotifyApi.getMyTopTracks({ 
+                limit: 50, 
+                time_range: 'medium_term' // last 6 months
+            });
+
+            return response.body.items
+                .filter(track => !track.is_local && track.id)
+                .map(track => ({
+                    id: track.id,
+                    name: track.name,
+                    artist: track.artists.map(a => a.name).join(', '),
+                    album: track.album.name,
+                    duration: track.duration_ms,
+                    imageUrl: track.album.images?.[0]?.url,
+                    previewUrl: track.preview_url || undefined,
+                    uri: track.uri
+                }));
+        } catch (error) {
+            console.error('Failed to get top tracks:', error);
+            return [];
+        }
+    }
+
     private async getPlaylistTracks(playlistId: string): Promise<SpotifyTrack[]> {
         try {
             const response = await this.spotifyApi.getPlaylistTracks(playlistId);
             return response.body.items
-                .filter(item => item.track && item.track.type === 'track')
+                .filter(item => item.track && item.track.type === 'track' && !item.track.is_local && item.track.id)
                 .map(item => ({
                     id: item.track!.id,
                     name: item.track!.name,
