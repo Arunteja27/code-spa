@@ -51,7 +51,7 @@ Choose from 5 stunning theme presets or create your own:
 
 ## 🚀 Quick Start
 
-See our [Contributing Guide](CONTRIBUTING.md) for detailed installation, usage instructions, and development setup.
+See our [Contributing Guide](docs/CONTRIBUTING.md) for detailed installation, usage instructions, and development setup.
 
 ### Get Started in 3 Steps:
 1. **Install**: Clone repo and press F5 in VS Code
@@ -63,6 +63,7 @@ See our [Contributing Guide](CONTRIBUTING.md) for detailed installation, usage i
 - 🐛 [Report Issues](https://github.com/Arunteja27/code-spa/issues)
 - 💡 [Feature Requests](https://github.com/Arunteja27/code-spa/issues/new?template=feature_request.md)
 - 📧 [Contact Support](https://arunteja27.github.io/arun-Website/#contact)
+- 📝 [Changelog](docs/CHANGELOG.md)
 
 ## 📄 License
 

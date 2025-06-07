@@ -136,18 +136,6 @@ Have an idea for Code Spa? Open an issue with the "enhancement" label!
 - Some theme customizations may not persist across VS Code updates
 - Volume control is read-only (synced from Spotify desktop app)
 
-## 📝 Changelog
+---
 
-### v0.1.0 (Current - MVP 2.0)
-- 🎨 Initial release with all core features
-- 🖼️ AI-powered dynamic backgrounds
-- 🎵 **Full Spotify Integration**:
-  - Real music playback with Spotify Premium
-  - Access to Liked Songs, Recently Played, Top Tracks, and Playlists
-  - Real-time volume sync with desktop app
-  - Professional tile-based UI with Font Awesome icons
-  - Scroll position persistence and clean navigation
-  - Playback context separation for proper prev/next behavior
-- 🎯 5 stunning theme presets
-- 🧠 Smart project analysis
-- 🎛️ Beautiful control panel interface 
+For project history and release notes, see [CHANGELOG.md](CHANGELOG.md). 
