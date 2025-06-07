@@ -18,12 +18,7 @@ Transform your VS Code experience into an immersive coding paradise with AI-powe
   - 🕒 **Recently Played**: Your last 50 recently played tracks
   - 🔥 **Your Top Tracks**: Your top tracks from the last 6 months
   - 🎵 **Playlists**: All your personal playlists with artwork
-- **Real-time Volume Sync**: Volume syncs with your Spotify desktop app every second
 - **Playback Controls**: Full prev/play/pause/next controls with Font Awesome icons
-- **Tile-Based Navigation**: Beautiful Spotify-style tile interface
-- **Scroll Position Persistence**: Maintains scroll position when navigating
-- **Now Playing Display**: See current track with artist information
-- **Clean Notifications**: Minimal notifications only for connection status
 
 ![Screenshot 2025-06-07 020920](https://github.com/user-attachments/assets/6a18fb01-a1a5-4127-9712-3ac7287df6e5)     
 *Fully integrated Spotify music player with tile-based navigation and real-time controls*
@@ -36,12 +31,6 @@ Choose from 5 stunning theme presets or create your own:
 - 🚀 **Space**: Deep blues and cosmic purples with starfield effects and Space Mono font
 - 🎯 **Minimal**: Clean, distraction-free design with light background and dark accents
 - 📼 **Retro**: 80s-inspired orange and yellow with CRT-style glow and Press Start 2P font
-
-### 🧠 Smart Project Analysis
-- **Language Detection**: Automatically identifies primary programming languages
-- **Framework Recognition**: Detects popular frameworks and libraries
-- **Project Type Classification**: Web Frontend/Backend, Mobile, Desktop, Data Science, etc.
-- **Mood Determination**: Assigns appropriate mood based on project characteristics
 
 ### 🎛️ Control Panel
 - **Centralized Control**: Manage all features from one beautiful interface
