@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as dotenv from 'dotenv';
 import { BackgroundController } from './backgroundController';
 import { MusicPlayer } from './musicPlayer';
 import { ProjectAnalyzer } from './projectAnalyzer';
@@ -17,6 +18,9 @@ let controlPanelProvider: ControlPanelProvider;
 export function activate(context: vscode.ExtensionContext) {
 	console.log('🎨 Code Spa is now active! Welcome to your coding sanctuary.');
 	
+	// grab env vars for spotify stuff
+	dotenv.config({ path: path.join(context.extensionPath, '.env') });
+	
 	backgroundController = new BackgroundController(context);
 	musicPlayer = new MusicPlayer(context);
 	projectAnalyzer = new ProjectAnalyzer();
@@ -32,9 +36,7 @@ export function activate(context: vscode.ExtensionContext) {
 	);
 
 	registerCommands(context);
-
 	initializeExtension();
-
 	setupWorkspaceMonitoring(context);
 
 	vscode.window.showInformationMessage('🎨 Code Spa activated! Open the Control Panel to customize your coding experience.');
@@ -83,6 +85,7 @@ function registerCommands(context: vscode.ExtensionContext) {
 		uiCustomizer.showCustomizationPanel();
 	});
 
+	// spotify connect/disconnect - pretty straightforward
 	const connectSpotify = vscode.commands.registerCommand('code-spa.connectSpotify', async () => {
 		vscode.window.showInformationMessage('🎵 Connecting to Spotify...');
 		const success = await musicPlayer.connectSpotify();
@@ -125,7 +128,7 @@ function setupWorkspaceMonitoring(context: vscode.ExtensionContext) {
 	const workspaceWatcher = vscode.workspace.onDidChangeWorkspaceFolders(async () => {
 		const config = vscode.workspace.getConfiguration('codeSpa');
 		if (config.get('background.enabled', true)) {
-
+			// wait a bit then auto-analyze the new workspace
 			setTimeout(async () => {
 				const command = vscode.commands.getCommands().then(commands => {
 					if (commands.includes('code-spa.analyzeProject')) {
@@ -176,6 +179,7 @@ async function handleConfigurationChange() {
 export function deactivate() {
 	console.log('🎨 Code Spa is deactivating. Thanks for using Code Spa!');
 	
+	// clean up everything
 	if (backgroundController) {
 		backgroundController.dispose();
 	}
