@@ -111,6 +111,13 @@ export class MusicPlayer {
             const success = await this.spotifyService.authenticate();
             if (success) {
                 await this.loadSpotifyPlaylists();
+                
+                // Reset view to library after successful connection
+                this.currentView = 'library';
+                this.currentCategory = null;
+                this.currentPlaylist = null;
+                this.currentTrackIndex = 0;
+                
                 this.startVolumeSync();
                 this.updateWebview();
                 vscode.window.showInformationMessage(`🎵 Connected! Found ${this.spotifyPlaylists.length} playlists`);
@@ -127,9 +134,19 @@ export class MusicPlayer {
     async disconnectSpotify(): Promise<void> {
         await this.spotifyService.disconnect();
         this.stopVolumeSync();
+        
+        // Reset all state to initial disconnected state
         this.spotifyPlaylists = [];
+        this.likedSongs = [];
+        this.recentlyPlayed = [];
+        this.topTracks = [];
         this.currentPlaylist = null;
         this.currentTrack = null;
+        this.currentView = 'library';
+        this.currentCategory = null;
+        this.currentTrackIndex = 0;
+        this.isPlaying = false;
+        
         this.updateWebview();
     }
 

@@ -80,7 +80,11 @@ export class SpotifyService {
             redirectUri: this.REDIRECT_URI
         });
 
-        this.restoreSession();
+        // Disabled auto session restore - user must login each time extension starts
+        // this.restoreSession();
+        
+        // Clear any stored tokens to ensure fresh login each time
+        this.clearTokens();
     }
 
     async authenticate(): Promise<boolean> {
