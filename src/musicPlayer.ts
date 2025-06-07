@@ -34,6 +34,10 @@ export class MusicPlayer {
     private likedSongs: SpotifyTrack[] = [];
     private recentlyPlayed: SpotifyTrack[] = [];
     private topTracks: SpotifyTrack[] = [];
+    
+    // Separate tracking for what's actually playing vs what's being browsed
+    private playbackPlaylist: SpotifyPlaylist | null = null;
+    private playbackTrackIndex: number = 0;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
@@ -147,6 +151,10 @@ export class MusicPlayer {
         this.currentTrackIndex = 0;
         this.isPlaying = false;
         
+        // Reset playback context
+        this.playbackPlaylist = null;
+        this.playbackTrackIndex = 0;
+        
         this.updateWebview();
     }
 
@@ -231,6 +239,7 @@ export class MusicPlayer {
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Code Spa Music Player</title>
+            <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
             <style>
                 body {
                     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -271,16 +280,24 @@ export class MusicPlayer {
                     border: 1px solid ${isSpotifyConnected ? 'rgba(29, 185, 84, 0.5)' : 'rgba(255, 255, 255, 0.2)'};
                 }
 
+                .connection-status p {
+                    font-size: 1.1rem;
+                    font-weight: 500;
+                    margin: 5px 0;
+                }
+
                 .connect-btn {
                     background: #1DB954;
                     color: white;
                     border: none;
-                    padding: 12px 25px;
-                    border-radius: 25px;
+                    padding: 10px 20px;
+                    border-radius: 20px;
                     cursor: pointer;
-                    font-weight: 600;
+                    font-weight: 500;
+                    font-size: 0.9rem;
                     transition: all 0.3s ease;
-                    margin: 10px 5px;
+                    margin: 8px 5px;
+                    outline: none;
                 }
 
                 .connect-btn:hover {
@@ -291,13 +308,15 @@ export class MusicPlayer {
                 .disconnect-btn {
                     background: rgba(255, 255, 255, 0.2);
                     color: white;
-                    border: 1px solid rgba(255, 255, 255, 0.3);
-                    padding: 8px 15px;
-                    border-radius: 20px;
+                    border: none;
+                    padding: 8px 16px;
+                    border-radius: 15px;
                     cursor: pointer;
-                    font-size: 0.9rem;
+                    font-weight: 400;
+                    font-size: 0.8rem;
                     transition: all 0.3s ease;
-                    margin-left: 10px;
+                    margin-top: 10px;
+                    outline: none;
                 }
 
                 .disconnect-btn:hover {
@@ -481,6 +500,22 @@ export class MusicPlayer {
                     cursor: pointer;
                     transition: all 0.3s ease;
                     font-size: 1.2rem;
+                    outline: none;
+                    color: white;
+                }
+
+                .control-btn:focus {
+                    outline: none;
+                    box-shadow: none;
+                }
+
+                .control-btn:active {
+                    outline: none;
+                    box-shadow: none;
+                }
+
+                .control-btn::-moz-focus-inner {
+                    border: 0;
                 }
 
                 .control-btn:hover {
@@ -784,14 +819,17 @@ export class MusicPlayer {
             const success = await this.spotifyService.pausePlayback();
             if (success) {
                 this.isPlaying = false;
-                vscode.window.showInformationMessage('⏸️ Paused');
             }
         } else {
-            if (this.currentTrack) {
+            // Try to resume playback first
+            const resumeSuccess = await this.spotifyService.resumePlayback();
+            if (resumeSuccess) {
+                this.isPlaying = true;
+            } else if (this.currentTrack) {
+                // If resume fails, play the selected track
                 const success = await this.spotifyService.playTrack(this.currentTrack.uri);
                 if (success) {
                     this.isPlaying = true;
-                    vscode.window.showInformationMessage(`🎵 Playing: ${this.currentTrack.name}`);
                 } else {
                     vscode.window.showErrorMessage('❌ Failed to play track. Make sure Spotify is open on a device.');
                 }
@@ -807,9 +845,10 @@ export class MusicPlayer {
             return;
         }
 
-        if (this.currentPlaylist && this.currentTrackIndex < this.currentPlaylist.tracks.length - 1) {
-            this.currentTrackIndex++;
-            this.currentTrack = this.currentPlaylist.tracks[this.currentTrackIndex] as SpotifyTrack;
+        // Use playback context instead of current view context
+        if (this.playbackPlaylist && this.playbackTrackIndex < this.playbackPlaylist.tracks.length - 1) {
+            this.playbackTrackIndex++;
+            this.currentTrack = this.playbackPlaylist.tracks[this.playbackTrackIndex] as SpotifyTrack;
             await this.spotifyService.playTrack(this.currentTrack.uri);
             this.isPlaying = true;
             this.updateWebview();
@@ -823,9 +862,10 @@ export class MusicPlayer {
             return;
         }
 
-        if (this.currentPlaylist && this.currentTrackIndex > 0) {
-            this.currentTrackIndex--;
-            this.currentTrack = this.currentPlaylist.tracks[this.currentTrackIndex] as SpotifyTrack;
+        // Use playback context instead of current view context
+        if (this.playbackPlaylist && this.playbackTrackIndex > 0) {
+            this.playbackTrackIndex--;
+            this.currentTrack = this.playbackPlaylist.tracks[this.playbackTrackIndex] as SpotifyTrack;
             await this.spotifyService.playTrack(this.currentTrack.uri);
             this.isPlaying = true;
             this.updateWebview();
@@ -846,9 +886,6 @@ export class MusicPlayer {
             this.currentPlaylist = playlist;
             this.currentTrackIndex = 0;
             this.currentView = 'playlist-songs';
-            if (playlist.tracks.length > 0) {
-                this.currentTrack = playlist.tracks[0];
-            }
             this.updateWebview();
         }
     }
@@ -862,9 +899,14 @@ export class MusicPlayer {
             this.currentTrackIndex = trackIndex;
             this.currentTrack = this.currentPlaylist.tracks[trackIndex] as SpotifyTrack;
             
+            // Set playback context - remember which playlist and track index is actually playing
+            this.playbackPlaylist = this.currentPlaylist;
+            this.playbackTrackIndex = trackIndex;
+            
             const success = await this.spotifyService.playTrack(this.currentTrack.uri);
             if (success) {
                 this.isPlaying = true;
+                
                 // small delay before updating to avoid scroll jump
                 setTimeout(() => {
                     this.updateWebview();
@@ -953,6 +995,8 @@ export class MusicPlayer {
     }
 
     private getLibraryTilesHTML(): string {
+        const user = this.spotifyService.getUser();
+        
         return `
             <div class="library-tiles">
                 <div class="library-tile" onclick="selectCategory('liked-songs')">
@@ -976,6 +1020,8 @@ export class MusicPlayer {
                     <div class="count">${this.spotifyPlaylists.length} playlists</div>
                 </div>
             </div>
+            
+            ${this.currentTrack ? this.getPlaybackControlsHTML(user) : ''}
         `;
     }
 
@@ -1003,8 +1049,10 @@ export class MusicPlayer {
 
         const tracksList = tracks.map((track, index) => {
             const duration = this.formatDuration(track.duration);
+            // Highlight track if it's currently playing (match by track ID)
+            const isActive = this.currentTrack && this.currentTrack.id === track.id;
             return `
-                <div class="track-item ${index === this.currentTrackIndex ? 'active' : ''}" 
+                <div class="track-item ${isActive ? 'active' : ''}" 
                      onclick="playTrack(${index})">
                     <div class="track-image">
                         ${track.imageUrl ? `<img src="${track.imageUrl}" alt="Album Art">` : '🎵'}
@@ -1057,8 +1105,10 @@ export class MusicPlayer {
 
         const tracksList = this.currentPlaylist.tracks.map((track, index) => {
             const duration = this.formatDuration(track.duration);
+            // Highlight track if it's currently playing (match by track ID)
+            const isActive = this.currentTrack && this.currentTrack.id === track.id;
             return `
-                <div class="track-item ${index === this.currentTrackIndex ? 'active' : ''}" 
+                <div class="track-item ${isActive ? 'active' : ''}" 
                      onclick="playTrack(${index})">
                     <div class="track-image">
                         ${track.imageUrl ? `<img src="${track.imageUrl}" alt="Album Art">` : '🎵'}
@@ -1093,11 +1143,15 @@ export class MusicPlayer {
             ` : ''}
 
             <div class="controls">
-                <button class="control-btn" onclick="previousTrack()">⏮️</button>
-                <button class="control-btn play-btn" onclick="togglePlayback()">
-                    ${this.isPlaying ? '⏸️' : '▶️'}
+                <button class="control-btn" onclick="previousTrack()">
+                    <i class="fas fa-step-backward" style="color: white; font-size: 1.2rem;"></i>
                 </button>
-                <button class="control-btn" onclick="nextTrack()">⏭️</button>
+                <button class="control-btn play-btn" onclick="togglePlayback()">
+                    <i class="fas ${this.isPlaying ? 'fa-pause' : 'fa-play'}" style="color: white; font-size: 1.5rem;"></i>
+                </button>
+                <button class="control-btn" onclick="nextTrack()">
+                    <i class="fas fa-step-forward" style="color: white; font-size: 1.2rem;"></i>
+                </button>
             </div>
 
             ${user && !user.isPremium ? `
