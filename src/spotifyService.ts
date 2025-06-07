@@ -386,6 +386,24 @@ export class SpotifyService {
         }
     }
 
+    async getCurrentPlaybackState(): Promise<{volume: number, isPlaying: boolean} | null> {
+        if (!this.isAuthenticated) return null;
+
+        try {
+            const response = await this.spotifyApi.getMyCurrentPlaybackState();
+            if (response.body && response.body.device) {
+                return {
+                    volume: response.body.device.volume_percent || 0,
+                    isPlaying: response.body.is_playing || false
+                };
+            }
+            return null;
+        } catch (error) {
+            await this.handleApiError(error);
+            return null;
+        }
+    }
+
     private async handleApiError(error: any): Promise<void> {
         if (error.statusCode === 401) {
             // token expired, try to refresh

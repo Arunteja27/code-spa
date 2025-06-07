@@ -26,6 +26,8 @@ export class MusicPlayer {
     private fallbackPlaylists: Map<string, Playlist> = new Map();
     private webviewPanel: vscode.WebviewPanel | null = null;
     private currentTrackIndex: number = 0;
+    private syncInterval: NodeJS.Timeout | null = null;
+    private currentSpotifyVolume: number = 50;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
@@ -102,6 +104,7 @@ export class MusicPlayer {
             const success = await this.spotifyService.authenticate();
             if (success) {
                 await this.loadSpotifyPlaylists();
+                this.startVolumeSync();
                 this.updateWebview();
                 vscode.window.showInformationMessage(`🎵 Connected! Found ${this.spotifyPlaylists.length} playlists`);
                 return true;
@@ -116,10 +119,34 @@ export class MusicPlayer {
 
     async disconnectSpotify(): Promise<void> {
         await this.spotifyService.disconnect();
+        this.stopVolumeSync();
         this.spotifyPlaylists = [];
         this.currentPlaylist = null;
         this.currentTrack = null;
         this.updateWebview();
+    }
+
+    private startVolumeSync(): void {
+        if (this.syncInterval) {
+            clearInterval(this.syncInterval);
+        }
+        
+        // sync volume every 1 second
+        this.syncInterval = setInterval(async () => {
+            const state = await this.spotifyService.getCurrentPlaybackState();
+            if (state) {
+                this.currentSpotifyVolume = state.volume;
+                this.isPlaying = state.isPlaying;
+                this.updateWebview();
+            }
+        }, 1000);
+    }
+
+    private stopVolumeSync(): void {
+        if (this.syncInterval) {
+            clearInterval(this.syncInterval);
+            this.syncInterval = null;
+        }
     }
 
     showPlayer(): void {
@@ -505,16 +532,20 @@ export class MusicPlayer {
                 ` : ''}
 
                 <div class="volume-container">
-                    <label>Volume: ${Math.round(this.volume * 100)}%</label>
+                    <label>Volume: ${this.currentSpotifyVolume}% (Spotify App)</label>
                     <input 
                         type="range" 
                         class="volume-slider" 
                         min="0" 
-                        max="1" 
-                        step="0.1" 
-                        value="${this.volume}"
-                        onchange="setVolume(this.value)"
+                        max="100" 
+                        step="1" 
+                        value="${this.currentSpotifyVolume}"
+                        disabled
+                        title="Volume synced from your Spotify app - adjust volume in Spotify"
                     />
+                    <p style="font-size: 0.8rem; opacity: 0.6; text-align: center; margin-top: 5px;">
+                        Volume syncs from Spotify app every 1 second
+                    </p>
                 </div>
             </div>
 
@@ -725,6 +756,7 @@ export class MusicPlayer {
     }
 
     dispose(): void {
+        this.stopVolumeSync();
         if (this.webviewPanel) {
             this.webviewPanel.dispose();
         }
