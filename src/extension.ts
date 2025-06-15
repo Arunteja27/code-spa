@@ -14,6 +14,10 @@ let projectAnalyzer: ProjectAnalyzer;
 let uiCustomizer: UICustomizer;
 let controlPanelProvider: ControlPanelProvider;
 
+// save originals for notification patching
+const originalInfo = vscode.window.showInformationMessage;
+const originalWarn = vscode.window.showWarningMessage;
+const originalError = vscode.window.showErrorMessage;
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log('🎨 Code Spa is now active! Welcome to your coding sanctuary.');
@@ -134,6 +138,8 @@ function initializeExtension() {
 
 	const themePreset = config.get('theme.preset', 'cyberpunk');
 	uiCustomizer.applyPreset(themePreset as string);
+
+	patchNotifications(config);
 }
 
 function setupWorkspaceMonitoring(context: vscode.ExtensionContext) {
@@ -185,6 +191,22 @@ async function handleConfigurationChange() {
 
 	const themePreset = config.get('theme.preset', 'cyberpunk');
 	uiCustomizer.applyPreset(themePreset as string);
+
+	patchNotifications(config);
+}
+
+function patchNotifications(config: vscode.WorkspaceConfiguration) {
+	const enabled = config.get('notifications.enabled', true);
+	if(enabled){
+		vscode.window.showInformationMessage = originalInfo;
+		vscode.window.showWarningMessage = originalWarn;
+		vscode.window.showErrorMessage = originalError;
+	}else{
+		const noopInfo = ((..._args:any[])=>Promise.resolve(undefined)) as any;
+		vscode.window.showInformationMessage = noopInfo;
+		vscode.window.showWarningMessage = noopInfo;
+		vscode.window.showErrorMessage   = noopInfo;
+	}
 }
 
 export function deactivate() {

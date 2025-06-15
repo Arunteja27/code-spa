@@ -37,6 +37,7 @@ export class MusicPlayer {
     
     private playbackPlaylist: SpotifyPlaylist | null = null;
     private playbackTrackIndex: number = 0;
+    private trackEndTimer: NodeJS.Timeout | null = null;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
@@ -161,8 +162,20 @@ export class MusicPlayer {
             if (state) {
                 const newVolume = state.volume;
                 const newPlayingState = state.isPlaying;
-                
-                // only update webview if something actually changed
+
+                // detect track end using Spotify API progress
+                try {
+                    const playback = await (this.spotifyService as any).spotifyApi.getMyCurrentPlaybackState();
+                    if (playback.body && playback.body.item) {
+                        const duration = playback.body.item.duration_ms;
+                        const progress = playback.body.progress_ms;
+                        if (!newPlayingState && progress >= duration - 2000) {
+                            // track finished
+                            await this.nextTrack();
+                        }
+                    }
+                } catch {}
+
                 if (newVolume !== this.currentSpotifyVolume || newPlayingState !== this.isPlaying) {
                     this.currentSpotifyVolume = newVolume;
                     this.isPlaying = newPlayingState;
@@ -800,11 +813,13 @@ export class MusicPlayer {
             const resumeSuccess = await this.spotifyService.resumePlayback();
             if (resumeSuccess) {
                 this.isPlaying = true;
+                this.scheduleAutoNext(this.currentTrack?.duration, 0);
             } else if (this.currentTrack) {
                 // If resume fails, play the selected track
                 const success = await this.spotifyService.playTrack(this.currentTrack.uri);
                 if (success) {
                     this.isPlaying = true;
+                    this.scheduleAutoNext(this.currentTrack.duration, 0);
                 } else {
                     vscode.window.showErrorMessage('❌ Failed to play track. Make sure Spotify is open on a device.');
                 }
@@ -881,6 +896,7 @@ export class MusicPlayer {
             const success = await this.spotifyService.playTrack(this.currentTrack.uri);
             if (success) {
                 this.isPlaying = true;
+                this.scheduleAutoNext(this.currentTrack.duration, 0);
                 
                 // small delay before updating to avoid scroll jump
                 setTimeout(() => {
@@ -1176,5 +1192,17 @@ export class MusicPlayer {
             this.webviewPanel.dispose();
         }
         this.spotifyService.dispose();
+    }
+
+    private scheduleAutoNext(duration: number | undefined, progress: number): void {
+        if (this.trackEndTimer) {
+            clearTimeout(this.trackEndTimer);
+        }
+
+        if (duration && progress >= duration - 2000) {
+            this.trackEndTimer = setTimeout(async () => {
+                await this.nextTrack();
+            }, 1000);
+        }
     }
 } 

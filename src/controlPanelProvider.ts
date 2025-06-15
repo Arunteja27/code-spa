@@ -131,6 +131,9 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                 this.currentPlaylist = null;
                 this.updateView();
                 break;
+            case 'toggleNotifications':
+                await this.handleToggleNotifications();
+                break;
         }
     }
 
@@ -240,9 +243,13 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
 
     private async handleSelectPlaylist(playlistId: string) {
         if (this.musicPlayer) {
-            const spotifyService = this.musicPlayer.getSpotifyService();
-            const playlists = await spotifyService.getUserPlaylists();
-            this.currentPlaylist = playlists.find(p => p.id === playlistId);
+            // try cached playlists first for speed
+            this.currentPlaylist = this.musicPlayer.getSpotifyPlaylists().find(p => p.id === playlistId) || null;
+            if (!this.currentPlaylist) {
+                const spotifyService = this.musicPlayer.getSpotifyService();
+                const playlists = await spotifyService.getUserPlaylists();
+                this.currentPlaylist = playlists.find(p => p.id === playlistId) || null;
+            }
             if (this.currentPlaylist) {
                 this.spotifyView = 'playlist-songs';
                 this.updateView();
@@ -575,6 +582,7 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                     padding: 20px;
                     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
                     min-height: calc(100vh - 32px);
+                    min-width: 320px; /* ensure reasonable default width */
                 }
 
                 /* Navigation */
@@ -908,6 +916,13 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                         trackSpotifyNavigation('playlists');
                     }
                     
+                    if (type === 'connectSpotify') {
+                        const btn = document.getElementById('connectSpotifyBtn');
+                        const spinner = document.getElementById('spotifyConnectingSpinner');
+                        if (btn) btn.style.display = 'none';
+                        if (spinner) spinner.style.display = 'block';
+                    }
+                    
                     originalSendMessage(type, data);
                 };
 
@@ -944,12 +959,14 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
 
                 // Drag functionality
                 let isDragging = false;
+                let isUserDraggingProgress = false;
                 let currentContainer = null;
 
                 function startDrag(event) {
                     event.preventDefault();
                     isDragging = true;
                     currentContainer = event.target.closest('.progress-container');
+                    isUserDraggingProgress = true;
                     document.addEventListener('mousemove', onDrag);
                     document.addEventListener('mouseup', stopDrag);
                     event.target.style.cursor = 'grabbing';
@@ -984,6 +1001,7 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                     // Reset cursor
                     const handles = document.querySelectorAll('.progress-handle');
                     handles.forEach(handle => handle.style.cursor = 'grab');
+                    setTimeout(()=>{ isUserDraggingProgress = false; }, 500);
                 }
 
                 // Add interactive effects
@@ -1277,70 +1295,26 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                     </div>
                 </div>
 
-                <div class="quick-stats">
-                    <div class="stat-item">
-                        <span>🖼️ Background:</span>
-                        <span class="stat-value">Dynamic</span>
-                    </div>
-                    <div class="stat-item">
-                        <span>🎵 Music:</span>
-                        <span class="stat-value">Available</span>
-                    </div>
-                    <div class="stat-item">
-                        <span>🎨 Theme:</span>
-                        <span class="stat-value">Cyberpunk</span>
-                    </div>
-                    <div class="stat-item">
-                        <span>🚀 Sessions:</span>
-                        <span class="stat-value">∞</span>
-                    </div>
-                </div>
-
                 <div class="controls-section">
                     <div class="section-title">
-                        <span>🖼️</span>
-                        <span>Background Control</span>
+                        <span>⚡</span>
+                        <span>Quick Actions</span>
                     </div>
-                    <button class="control-button" onclick="sendMessage('toggleBackground')">
-                        <span class="control-icon">🔄</span>
-                        <span>Toggle Dynamic Backgrounds</span>
-                    </button>
                     <button class="control-button" onclick="sendMessage('analyzeProject')">
-                        <span class="control-icon">🔍</span>
-                        <span>Analyze Current Project</span>
+                        <span class="control-icon">🖼️</span>
+                        <span>Refresh Background</span>
                     </button>
-                </div>
-
-                <div class="controls-section">
-                    <div class="section-title">
-                        <span>🎵</span>
-                        <span>Music & Audio</span>
-                    </div>
                     <button class="control-button" onclick="navigateTo('music')">
                         <span class="control-icon">🎶</span>
-                        <span>Open Music Player</span>
+                        <span>Music Player</span>
                     </button>
-                </div>
-
-                <div class="controls-section">
-                    <div class="section-title">
-                        <span>🎨</span>
-                        <span>Customization</span>
-                    </div>
                     <button class="control-button" onclick="navigateTo('themes')">
                         <span class="control-icon">🌈</span>
-                        <span>Customize Theme</span>
+                        <span>Theme Customizer</span>
                     </button>
-                </div>
-
-                <div class="controls-section">
-                    <div class="section-title">
-                        <span>⚙️</span>
-                        <span>Settings</span>
-                    </div>
                     <button class="control-button" onclick="navigateTo('settings')">
                         <span class="control-icon">🔧</span>
-                        <span>Open Settings</span>
+                        <span>Settings</span>
                     </button>
                 </div>
 
@@ -1357,7 +1331,6 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
             <div class="page-content">
                 <div class="nav-header">
                     <div class="nav-title">🎨 Theme Customizer</div>
-                    <button class="nav-back" onclick="goBack()">← Back</button>
                 </div>
 
                 <div class="theme-grid">
@@ -1436,7 +1409,6 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
             <div class="page-content">
                 <div class="nav-header">
                     <div class="nav-title">🎵 Music Player</div>
-                    <button class="nav-back" onclick="goBack()">← Back</button>
                 </div>
 
                 <div class="music-section">
@@ -1452,19 +1424,30 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                             `<p style="margin: 5px 0; opacity: 0.8; font-size: 14px;">Welcome back! Your music is ready.</p>` : 
                             `<p style="margin: 5px 0; opacity: 0.8; font-size: 14px;">Connect to access your playlists and control playback</p>`
                         }
-                    </div>
-                    <div class="music-controls">
                         ${!isSpotifyConnected ? 
-                            `<button class="music-button" onclick="sendMessage('connectSpotify')" style="background: #1DB954; color: white;">
+                            `<button class="music-button" id="connectSpotifyBtn" onclick="sendMessage('connectSpotify')" style="background: #1DB954; color: white; margin-top:10px; width: 100%;">
                                 🔗 Connect Spotify
-                            </button>` :
+                            </button>
+                            <div id="spotifyConnectingSpinner" style="display:none; margin-top: 10px; font-size: 14px; opacity:0.8;">⏳ Connecting...</div>` : ''}
+                        ${isSpotifyConnected ?
+                            `<div style="display:flex; gap:10px; justify-content:center; margin-top:10px;">
+                                <button class="music-button" onclick="navigateTo('spotify')" style="background: #1DB954; color: white; flex:1;">
+                                    🎵 Open Spotify Player
+                                </button>
+                                <button class="music-button" onclick="sendMessage('disconnectSpotify')" style="background: rgba(255, 255, 255, 0.2); flex:1;">
+                                    ❌ Disconnect
+                                </button>
+                            </div>` : ''}
+                    </div>
+
+                    <div class="music-controls" style="display:none;">
+                        ${isSpotifyConnected ?
                             `<button class="music-button" onclick="navigateTo('spotify')" style="background: #1DB954; color: white;">
                                 🎵 Open Spotify Player
                             </button>
                             <button class="music-button" onclick="sendMessage('disconnectSpotify')" style="background: rgba(255, 255, 255, 0.2);">
                                 ❌ Disconnect
-                            </button>`
-                        }
+                            </button>` : ''}
                     </div>
                 </div>
 
@@ -1919,7 +1902,6 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
             <div class="page-content">
                 <div class="nav-header">
                     <div class="nav-title">⚙️ Settings</div>
-                    <button class="nav-back" onclick="goBack()">← Back</button>
                 </div>
 
                 <div class="controls-section">
@@ -1930,6 +1912,10 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                     <button class="control-button" onclick="sendMessage('openSettings')">
                         <span class="control-icon">⚙️</span>
                         <span>Open VS Code Settings</span>
+                    </button>
+                    <button class="control-button" onclick="sendMessage('toggleNotifications')">
+                        <span class="control-icon">🔔</span>
+                        <span>Toggle Notifications</span>
                     </button>
                 </div>
 
@@ -1946,6 +1932,10 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                         <span>Music Volume:</span>
                         <span class="stat-value">30%</span>
                     </div>
+                    <div class="stat-item">
+                        <span>Notifications:</span>
+                        <span class="stat-value">${vscode.workspace.getConfiguration('codeSpa').get('notifications.enabled', true) ? 'On' : 'Off'}</span>
+                    </div>
                 </div>
 
                 <div class="footer">
@@ -1953,5 +1943,13 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                 </div>
             </div>
         `;
+    }
+
+    private async handleToggleNotifications(){
+        const config = vscode.workspace.getConfiguration('codeSpa');
+        const enabled = config.get('notifications.enabled', true);
+        await config.update('notifications.enabled', !enabled, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage(`🔔 Notifications ${!enabled? 'enabled':'disabled'}`);
+        this.updateView();
     }
 } 
