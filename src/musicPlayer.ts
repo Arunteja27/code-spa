@@ -35,9 +35,9 @@ export class MusicPlayer {
     private recentlyPlayed: SpotifyTrack[] = [];
     private topTracks: SpotifyTrack[] = [];
     
-    // Separate tracking for what's actually playing vs what's being browsed
     private playbackPlaylist: SpotifyPlaylist | null = null;
     private playbackTrackIndex: number = 0;
+    private trackEndTimer: NodeJS.Timeout | null = null;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
@@ -46,7 +46,6 @@ export class MusicPlayer {
     }
 
     private initializeFallbackPlaylists() {
-        // demo playlists for when spotify isn't connected
         const ambientPlaylist: Playlist = {
             name: 'Ambient Focus (Demo)',
             description: 'Demo playlist - Connect Spotify for real music!',
@@ -84,7 +83,6 @@ export class MusicPlayer {
         const savedVolume = this.context.globalState.get('musicVolume', 0.3);
         this.volume = savedVolume as number;
 
-        // load spotify playlists if we're already authenticated
         if (this.spotifyService.getIsAuthenticated()) {
             await this.loadSpotifyPlaylists();
         }
@@ -94,12 +92,10 @@ export class MusicPlayer {
         try {
             const allContent = await this.spotifyService.getUserPlaylists();
             
-            // separate special collections from regular playlists
             this.likedSongs = allContent.find(p => p.id === 'liked-songs')?.tracks || [];
             this.recentlyPlayed = allContent.find(p => p.id === 'recently-played')?.tracks || [];
             this.topTracks = allContent.find(p => p.id === 'top-tracks')?.tracks || [];
             
-            // keep only regular playlists
             this.spotifyPlaylists = allContent.filter(p => 
                 !['liked-songs', 'recently-played', 'top-tracks'].includes(p.id)
             );
@@ -116,7 +112,6 @@ export class MusicPlayer {
             if (success) {
                 await this.loadSpotifyPlaylists();
                 
-                // Reset view to library after successful connection
                 this.currentView = 'library';
                 this.currentCategory = null;
                 this.currentPlaylist = null;
@@ -139,7 +134,6 @@ export class MusicPlayer {
         await this.spotifyService.disconnect();
         this.stopVolumeSync();
         
-        // Reset all state to initial disconnected state
         this.spotifyPlaylists = [];
         this.likedSongs = [];
         this.recentlyPlayed = [];
@@ -151,7 +145,6 @@ export class MusicPlayer {
         this.currentTrackIndex = 0;
         this.isPlaying = false;
         
-        // Reset playback context
         this.playbackPlaylist = null;
         this.playbackTrackIndex = 0;
         
@@ -169,8 +162,20 @@ export class MusicPlayer {
             if (state) {
                 const newVolume = state.volume;
                 const newPlayingState = state.isPlaying;
-                
-                // only update webview if something actually changed
+
+                // detect track end using Spotify API progress
+                try {
+                    const playback = await (this.spotifyService as any).spotifyApi.getMyCurrentPlaybackState();
+                    if (playback.body && playback.body.item) {
+                        const duration = playback.body.item.duration_ms;
+                        const progress = playback.body.progress_ms;
+                        if (!newPlayingState && progress >= duration - 2000) {
+                            // track finished
+                            await this.nextTrack();
+                        }
+                    }
+                } catch {}
+
                 if (newVolume !== this.currentSpotifyVolume || newPlayingState !== this.isPlaying) {
                     this.currentSpotifyVolume = newVolume;
                     this.isPlaying = newPlayingState;
@@ -189,31 +194,14 @@ export class MusicPlayer {
     }
 
     showPlayer(): void {
-        if (this.webviewPanel) {
-            this.webviewPanel.reveal();
-            return;
-        }
-
-        this.webviewPanel = vscode.window.createWebviewPanel(
-            'codeSpaMusic',
-            '🎵 Code Spa Music Player',
-            vscode.ViewColumn.Beside,
-            {
-                enableScripts: true,
-                retainContextWhenHidden: true
+        // Redirect to control panel instead of opening separate window
+        vscode.window.showInformationMessage(
+            '🎵 Music player is now available in the Code Spa control panel!',
+            'Open Control Panel'
+        ).then(selection => {
+            if (selection === 'Open Control Panel') {
+                vscode.commands.executeCommand('code-spa.openControlPanel');
             }
-        );
-
-        this.webviewPanel.webview.html = this.getMusicPlayerHTML();
-        
-        this.webviewPanel.webview.onDidReceiveMessage(
-            message => this.handleWebviewMessage(message),
-            undefined,
-            this.context.subscriptions
-        );
-
-        this.webviewPanel.onDidDispose(() => {
-            this.webviewPanel = null;
         });
     }
 
@@ -825,11 +813,13 @@ export class MusicPlayer {
             const resumeSuccess = await this.spotifyService.resumePlayback();
             if (resumeSuccess) {
                 this.isPlaying = true;
+                this.scheduleAutoNext(this.currentTrack?.duration, 0);
             } else if (this.currentTrack) {
                 // If resume fails, play the selected track
                 const success = await this.spotifyService.playTrack(this.currentTrack.uri);
                 if (success) {
                     this.isPlaying = true;
+                    this.scheduleAutoNext(this.currentTrack.duration, 0);
                 } else {
                     vscode.window.showErrorMessage('❌ Failed to play track. Make sure Spotify is open on a device.');
                 }
@@ -906,6 +896,7 @@ export class MusicPlayer {
             const success = await this.spotifyService.playTrack(this.currentTrack.uri);
             if (success) {
                 this.isPlaying = true;
+                this.scheduleAutoNext(this.currentTrack.duration, 0);
                 
                 // small delay before updating to avoid scroll jump
                 setTimeout(() => {
@@ -1162,11 +1153,56 @@ export class MusicPlayer {
         `;
     }
 
+    getSpotifyService(): SpotifyService {
+        return this.spotifyService;
+    }
+
+    async playTrackAtIndex(trackIndex: number): Promise<void> {
+        await this.playTrack(trackIndex);
+    }
+
+    // Expose data for control panel
+    getLikedSongs(): SpotifyTrack[] {
+        return this.likedSongs;
+    }
+
+    getRecentlyPlayed(): SpotifyTrack[] {
+        return this.recentlyPlayed;
+    }
+
+    getTopTracks(): SpotifyTrack[] {
+        return this.topTracks;
+    }
+
+    getSpotifyPlaylists(): SpotifyPlaylist[] {
+        return this.spotifyPlaylists;
+    }
+
+    getCurrentTrack(): SpotifyTrack | null {
+        return this.currentTrack;
+    }
+
+    getIsPlaying(): boolean {
+        return this.isPlaying;
+    }
+
     dispose(): void {
         this.stopVolumeSync();
         if (this.webviewPanel) {
             this.webviewPanel.dispose();
         }
         this.spotifyService.dispose();
+    }
+
+    private scheduleAutoNext(duration: number | undefined, progress: number): void {
+        if (this.trackEndTimer) {
+            clearTimeout(this.trackEndTimer);
+        }
+
+        if (duration && progress >= duration - 2000) {
+            this.trackEndTimer = setTimeout(async () => {
+                await this.nextTrack();
+            }, 1000);
+        }
     }
 } 

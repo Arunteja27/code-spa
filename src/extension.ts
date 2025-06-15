@@ -14,11 +14,14 @@ let projectAnalyzer: ProjectAnalyzer;
 let uiCustomizer: UICustomizer;
 let controlPanelProvider: ControlPanelProvider;
 
+// save originals for notification patching
+const originalInfo = vscode.window.showInformationMessage;
+const originalWarn = vscode.window.showWarningMessage;
+const originalError = vscode.window.showErrorMessage;
 
 export function activate(context: vscode.ExtensionContext) {
 	console.log('🎨 Code Spa is now active! Welcome to your coding sanctuary.');
 	
-	// grab env vars for spotify stuff
 	dotenv.config({ path: path.join(context.extensionPath, '.env') });
 	
 	backgroundController = new BackgroundController(context);
@@ -26,6 +29,9 @@ export function activate(context: vscode.ExtensionContext) {
 	projectAnalyzer = new ProjectAnalyzer();
 	uiCustomizer = new UICustomizer(context);
 	controlPanelProvider = new ControlPanelProvider(context);
+	
+	controlPanelProvider.setUICustomizer(uiCustomizer);
+	controlPanelProvider.setMusicPlayer(musicPlayer);
 
 	context.subscriptions.push(
 		vscode.window.registerWebviewViewProvider(
@@ -85,7 +91,16 @@ function registerCommands(context: vscode.ExtensionContext) {
 		uiCustomizer.showCustomizationPanel();
 	});
 
-	// spotify connect/disconnect - pretty straightforward
+	const testTheme = vscode.commands.registerCommand('code-spa.testTheme', async () => {
+		const themes = ['cyberpunk', 'nature', 'space', 'minimal', 'retro'];
+		const selected = await vscode.window.showQuickPick(themes, {
+			placeHolder: 'Select a theme to test'
+		});
+		if (selected) {
+			await uiCustomizer.applyPreset(selected);
+		}
+	});
+
 	const connectSpotify = vscode.commands.registerCommand('code-spa.connectSpotify', async () => {
 		vscode.window.showInformationMessage('🎵 Connecting to Spotify...');
 		const success = await musicPlayer.connectSpotify();
@@ -104,6 +119,7 @@ function registerCommands(context: vscode.ExtensionContext) {
 		openMusicPlayer,
 		analyzeProject,
 		customizeTheme,
+		testTheme,
 		connectSpotify,
 		disconnectSpotify
 	);
@@ -122,13 +138,14 @@ function initializeExtension() {
 
 	const themePreset = config.get('theme.preset', 'cyberpunk');
 	uiCustomizer.applyPreset(themePreset as string);
+
+	patchNotifications(config);
 }
 
 function setupWorkspaceMonitoring(context: vscode.ExtensionContext) {
 	const workspaceWatcher = vscode.workspace.onDidChangeWorkspaceFolders(async () => {
 		const config = vscode.workspace.getConfiguration('codeSpa');
 		if (config.get('background.enabled', true)) {
-			// wait a bit then auto-analyze the new workspace
 			setTimeout(async () => {
 				const command = vscode.commands.getCommands().then(commands => {
 					if (commands.includes('code-spa.analyzeProject')) {
@@ -174,12 +191,27 @@ async function handleConfigurationChange() {
 
 	const themePreset = config.get('theme.preset', 'cyberpunk');
 	uiCustomizer.applyPreset(themePreset as string);
+
+	patchNotifications(config);
+}
+
+function patchNotifications(config: vscode.WorkspaceConfiguration) {
+	const enabled = config.get('notifications.enabled', true);
+	if(enabled){
+		vscode.window.showInformationMessage = originalInfo;
+		vscode.window.showWarningMessage = originalWarn;
+		vscode.window.showErrorMessage = originalError;
+	}else{
+		const noopInfo = ((..._args:any[])=>Promise.resolve(undefined)) as any;
+		vscode.window.showInformationMessage = noopInfo;
+		vscode.window.showWarningMessage = noopInfo;
+		vscode.window.showErrorMessage   = noopInfo;
+	}
 }
 
 export function deactivate() {
 	console.log('🎨 Code Spa is deactivating. Thanks for using Code Spa!');
 	
-	// clean up everything
 	if (backgroundController) {
 		backgroundController.dispose();
 	}

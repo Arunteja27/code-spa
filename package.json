@@ -56,6 +56,11 @@
         "category": "Code Spa"
       },
       {
+        "command": "code-spa.testTheme",
+        "title": "Test Theme (Quick Switch)",
+        "category": "Code Spa"
+      },
+      {
         "command": "code-spa.connectSpotify",
         "title": "Connect to Spotify",
         "category": "Code Spa"
@@ -144,6 +149,9 @@
         },
         {
           "command": "code-spa.customizeTheme"
+        },
+        {
+          "command": "code-spa.testTheme"
         },
         {
           "command": "code-spa.connectSpotify"
