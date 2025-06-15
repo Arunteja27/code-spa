@@ -130,6 +130,46 @@
           "type": "string",
           "default": "",
           "description": "Spotify App Client Secret (keep this private!)"
+        },
+        "codeSpa.notifications.extensionActivation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notifications for extension activation and status"
+        },
+        "codeSpa.notifications.backgroundChanges": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notifications when background changes"
+        },
+        "codeSpa.notifications.themeChanges": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notifications when themes are applied"
+        },
+        "codeSpa.notifications.spotifyConnection": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notifications for Spotify connection status"
+        },
+        "codeSpa.notifications.musicPlayback": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notifications for music playback (play/pause/skip)"
+        },
+        "codeSpa.notifications.projectAnalysis": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notifications for project analysis results"
+        },
+        "codeSpa.notifications.errors": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show error notifications"
+        },
+        "codeSpa.notifications.warnings": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show warning notifications"
         }
       }
     },

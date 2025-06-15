@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { UICustomizer } from './uiCustomizer';
 import { MusicPlayer } from './musicPlayer';
+import { NotificationService } from './notificationService';
 
 export class ControlPanelProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'codeSpaControlPanel';
@@ -8,6 +9,7 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
     private currentPage: string = 'home';
     private uiCustomizer?: UICustomizer;
     private musicPlayer?: MusicPlayer;
+    private notificationService: NotificationService;
     
     private spotifyView: 'library' | 'category' | 'playlists' | 'playlist-songs' = 'library';
     private currentCategory: 'liked-songs' | 'recently-played' | 'top-tracks' | 'playlists' | null = null;
@@ -16,7 +18,9 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
     private currentTrackInfo: { name: string; artist: string; imageUrl: string | null; isPlaying: boolean } | null = null;
     private currentPlaybackContext: { tracks: any[]; currentIndex: number; category?: string; playlistId?: string } | null = null;
 
-    constructor(private readonly context: vscode.ExtensionContext) {}
+    constructor(private readonly context: vscode.ExtensionContext) {
+        this.notificationService = NotificationService.getInstance();
+    }
 
     public setUICustomizer(uiCustomizer: UICustomizer) {
         this.uiCustomizer = uiCustomizer;
@@ -134,13 +138,16 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
             case 'toggleNotifications':
                 await this.handleToggleNotifications();
                 break;
+            case 'toggleNotificationCategory':
+                await this.handleToggleNotificationCategory(data.category);
+                break;
         }
     }
 
     private async applyTheme(themeName: string) {
         if (this.uiCustomizer) {
             await this.uiCustomizer.applyPreset(themeName);
-            vscode.window.showInformationMessage(`🎨 ${themeName} theme applied!`);
+            this.notificationService.showThemeChange(`🎨 ${themeName} theme applied!`);
         } else {
             // Fallback to command if UICustomizer not available
             vscode.commands.executeCommand('code-spa.testTheme');
@@ -149,13 +156,13 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
 
     private async handleSpotifyConnect() {
         if (this.musicPlayer) {
-            vscode.window.showInformationMessage('🎵 Connecting to Spotify...');
+            this.notificationService.showSpotifyConnection('🎵 Connecting to Spotify...');
             const success = await this.musicPlayer.connectSpotify();
             if (success) {
                 // Switch to Spotify interface after successful connection
                 this.currentPage = 'spotify';
                 this.updateView();
-                vscode.window.showInformationMessage('🎵 Successfully connected to Spotify!');
+                this.notificationService.showSpotifyConnection('🎵 Successfully connected to Spotify!');
             }
         }
     }
@@ -166,7 +173,7 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
             // Return to music page after disconnect
             this.currentPage = 'music';
             this.updateView();
-            vscode.window.showInformationMessage('🎵 Disconnected from Spotify');
+            this.notificationService.showSpotifyConnection('🎵 Disconnected from Spotify');
         }
     }
 
@@ -190,10 +197,10 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                 try {
                     if (wasPlaying) {
                         await spotifyService.pausePlayback();
-                        vscode.window.showInformationMessage('⏸️ Playback paused');
+                        this.notificationService.showMusicPlayback('⏸️ Playback paused');
                     } else {
                         await spotifyService.resumePlayback();
-                        vscode.window.showInformationMessage('▶️ Playback resumed');
+                        this.notificationService.showMusicPlayback('▶️ Playback resumed');
                     }
                 } catch (error) {
                     if (this.currentTrackInfo) {
@@ -220,7 +227,7 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                 } else {
                     await spotifyService.skipToNext();
                 }
-                vscode.window.showInformationMessage('⏭️ Skipped to next track');
+                this.notificationService.showMusicPlayback('⏭️ Skipped to next track');
                 this.updateView();
             }
         }
@@ -235,7 +242,7 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                 } else {
                     await spotifyService.skipToPrevious();
                 }
-                vscode.window.showInformationMessage('⏮️ Skipped to previous track');
+                this.notificationService.showMusicPlayback('⏮️ Skipped to previous track');
                 this.updateView();
             }
         }
@@ -309,7 +316,7 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                     
                     const success = await spotifyService.playTrack(track.uri);
                     if (success) {
-                        vscode.window.showInformationMessage(`🎵 Now playing: ${track.name} by ${track.artist}`);
+                        this.notificationService.showMusicPlayback(`🎵 Now playing: ${track.name} by ${track.artist}`);
                         this.updateView();
                     }
                 }
@@ -385,7 +392,7 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                             console.log(`Seeked to ${this.formatDuration(seekPositionMs)}`);
                         } catch (error) {
                         console.error('Error seeking:', error);
-                        vscode.window.showErrorMessage('Failed to seek in track');
+                        this.notificationService.showError('Failed to seek in track');
                     }
                 }
             }
@@ -571,18 +578,33 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                     background: ${(this.currentPage === 'spotify' || this.currentPage === 'music') ? 'linear-gradient(135deg, #1DB954 0%, #1ed760 50%, #191414 100%)' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'};
                     color: white;
                     margin: 0;
-                    padding: 16px;
-                    min-height: 100vh;
+                    padding: 8px;
+                    max-height: 400px; /* Reduce maximum height */
+                    overflow-y: auto;
+                    scrollbar-width: thin;
+                    scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+                }
+
+                body::-webkit-scrollbar {
+                    width: 6px;
+                }
+
+                body::-webkit-scrollbar-track {
+                    background: transparent;
+                }
+
+                body::-webkit-scrollbar-thumb {
+                    background: rgba(255, 255, 255, 0.3);
+                    border-radius: 3px;
                 }
 
                 .app-container {
                     background: rgba(0, 0, 0, 0.3);
                     backdrop-filter: blur(10px);
-                    border-radius: 12px;
-                    padding: 20px;
-                    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-                    min-height: calc(100vh - 32px);
-                    min-width: 320px; /* ensure reasonable default width */
+                    border-radius: 8px;
+                    padding: 12px;
+                    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+                    min-width: 280px; /* Reduced width */
                 }
 
                 /* Navigation */
@@ -661,17 +683,17 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                 }
 
                 .controls-section {
-                    margin-bottom: 30px;
+                    margin-bottom: 16px; /* Reduced margin */
                 }
 
                 .section-title {
-                    font-size: 18px;
+                    font-size: 16px; /* Slightly smaller */
                     font-weight: bold;
-                    margin-bottom: 15px;
+                    margin-bottom: 10px; /* Reduced margin */
                     color: #00d4ff;
                     display: flex;
                     align-items: center;
-                    gap: 8px;
+                    gap: 6px; /* Reduced gap */
                 }
 
                 .control-button {
@@ -701,6 +723,39 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                     font-size: 16px;
                     width: 20px;
                     text-align: center;
+                }
+
+                /* Notification toggle buttons */
+                .notification-toggle {
+                    background: rgba(255, 255, 255, 0.08);
+                    border: 1px solid rgba(255, 255, 255, 0.2);
+                    border-radius: 6px;
+                    padding: 8px 12px;
+                    color: white;
+                    cursor: pointer;
+                    transition: all 0.3s ease;
+                    font-size: 12px;
+                    text-align: center;
+                    font-family: inherit;
+                }
+
+                .notification-toggle.enabled {
+                    background: rgba(34, 197, 94, 0.4);
+                    border-color: rgba(34, 197, 94, 0.6);
+                    color: #22c55e;
+                    font-weight: 600;
+                }
+
+                .notification-toggle.disabled {
+                    background: rgba(239, 68, 68, 0.4);
+                    border-color: rgba(239, 68, 68, 0.6);
+                    color: #ef4444;
+                    font-weight: 600;
+                }
+
+                .notification-toggle:hover {
+                    transform: scale(1.05);
+                    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
                 }
 
                 .quick-stats {
@@ -1898,10 +1953,67 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
     }
 
     private getSettingsPage(): string {
+        const notificationConfig = this.notificationService.getConfig();
+        const allEnabled = Object.values(notificationConfig).every(Boolean);
+        const allDisabled = Object.values(notificationConfig).every(val => !val);
+        
+        let globalButtonColor, globalButtonText, globalButtonIcon;
+        if (allEnabled) {
+            globalButtonColor = 'background: rgba(34, 197, 94, 0.3); border-color: rgba(34, 197, 94, 0.5); color: #22c55e;';
+            globalButtonText = 'All Notifications ON';
+            globalButtonIcon = '🟢';
+        } else if (allDisabled) {
+            globalButtonColor = 'background: rgba(239, 68, 68, 0.3); border-color: rgba(239, 68, 68, 0.5); color: #ef4444;';
+            globalButtonText = 'All Notifications OFF';
+            globalButtonIcon = '🔴';
+        } else {
+            globalButtonColor = 'background: rgba(255, 165, 0, 0.3); border-color: #FFA500; color: #FFA500;';
+            globalButtonText = 'Mixed Settings - Click to Turn All OFF';
+            globalButtonIcon = '🟡';
+        }
+        
         return `
             <div class="page-content">
                 <div class="nav-header">
                     <div class="nav-title">⚙️ Settings</div>
+                </div>
+
+                <div class="controls-section">
+                    <div class="section-title">
+                        <span>🔔</span>
+                        <span>Notification Settings</span>
+                    </div>
+                    <button class="control-button" onclick="sendMessage('toggleNotifications')" style="${globalButtonColor} font-weight: 600;">
+                        <span class="control-icon">${globalButtonIcon}</span>
+                        <span>${globalButtonText}</span>
+                    </button>
+                    
+                    <div class="notification-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px;">
+                        <button class="notification-toggle ${notificationConfig.extensionActivation ? 'enabled' : 'disabled'}" onclick="sendMessage('toggleNotificationCategory', {category: 'extensionActivation'})">
+                            <span>🚀 Activation</span>
+                        </button>
+                        <button class="notification-toggle ${notificationConfig.backgroundChanges ? 'enabled' : 'disabled'}" onclick="sendMessage('toggleNotificationCategory', {category: 'backgroundChanges'})">
+                            <span>🖼️ Background</span>
+                        </button>
+                        <button class="notification-toggle ${notificationConfig.themeChanges ? 'enabled' : 'disabled'}" onclick="sendMessage('toggleNotificationCategory', {category: 'themeChanges'})">
+                            <span>🎨 Themes</span>
+                        </button>
+                        <button class="notification-toggle ${notificationConfig.spotifyConnection ? 'enabled' : 'disabled'}" onclick="sendMessage('toggleNotificationCategory', {category: 'spotifyConnection'})">
+                            <span>🎵 Spotify</span>
+                        </button>
+                        <button class="notification-toggle ${notificationConfig.musicPlayback ? 'enabled' : 'disabled'}" onclick="sendMessage('toggleNotificationCategory', {category: 'musicPlayback'})">
+                            <span>🎶 Playback</span>
+                        </button>
+                        <button class="notification-toggle ${notificationConfig.projectAnalysis ? 'enabled' : 'disabled'}" onclick="sendMessage('toggleNotificationCategory', {category: 'projectAnalysis'})">
+                            <span>🔍 Analysis</span>
+                        </button>
+                        <button class="notification-toggle ${notificationConfig.errors ? 'enabled' : 'disabled'}" onclick="sendMessage('toggleNotificationCategory', {category: 'errors'})">
+                            <span>❌ Errors</span>
+                        </button>
+                        <button class="notification-toggle ${notificationConfig.warnings ? 'enabled' : 'disabled'}" onclick="sendMessage('toggleNotificationCategory', {category: 'warnings'})">
+                            <span>⚠️ Warnings</span>
+                        </button>
+                    </div>
                 </div>
 
                 <div class="controls-section">
@@ -1913,43 +2025,48 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                         <span class="control-icon">⚙️</span>
                         <span>Open VS Code Settings</span>
                     </button>
-                    <button class="control-button" onclick="sendMessage('toggleNotifications')">
-                        <span class="control-icon">🔔</span>
-                        <span>Toggle Notifications</span>
-                    </button>
-                </div>
-
-                <div class="quick-stats">
-                    <div class="stat-item">
-                        <span>Extension Version:</span>
-                        <span class="stat-value">0.1.0</span>
-                    </div>
-                    <div class="stat-item">
-                        <span>Background Opacity:</span>
-                        <span class="stat-value">15%</span>
-                    </div>
-                    <div class="stat-item">
-                        <span>Music Volume:</span>
-                        <span class="stat-value">30%</span>
-                    </div>
-                    <div class="stat-item">
-                        <span>Notifications:</span>
-                        <span class="stat-value">${vscode.workspace.getConfiguration('codeSpa').get('notifications.enabled', true) ? 'On' : 'Off'}</span>
-                    </div>
-                </div>
-
-                <div class="footer">
-                    <p>⚙️ Configure Code Spa to your preferences</p>
                 </div>
             </div>
         `;
     }
 
     private async handleToggleNotifications(){
-        const config = vscode.workspace.getConfiguration('codeSpa');
-        const enabled = config.get('notifications.enabled', true);
-        await config.update('notifications.enabled', !enabled, vscode.ConfigurationTarget.Global);
-        vscode.window.showInformationMessage(`🔔 Notifications ${!enabled? 'enabled':'disabled'}`);
+        const enabled = await this.notificationService.toggleAllNotifications();
+        // Don't show notification about toggling notifications - that would be confusing!
+        console.log(`🔔 All notifications ${enabled ? 'enabled' : 'disabled'}`);
+        this.updateView();
+    }
+
+    private async handleToggleNotificationCategory(category: string) {
+        let enabled = false;
+        switch (category) {
+            case 'extensionActivation':
+                enabled = await this.notificationService.toggleExtensionActivation();
+                break;
+            case 'backgroundChanges':
+                enabled = await this.notificationService.toggleBackgroundChanges();
+                break;
+            case 'themeChanges':
+                enabled = await this.notificationService.toggleThemeChanges();
+                break;
+            case 'spotifyConnection':
+                enabled = await this.notificationService.toggleSpotifyConnection();
+                break;
+            case 'musicPlayback':
+                enabled = await this.notificationService.toggleMusicPlayback();
+                break;
+            case 'projectAnalysis':
+                enabled = await this.notificationService.toggleProjectAnalysis();
+                break;
+            case 'errors':
+                enabled = await this.notificationService.toggleErrors();
+                break;
+            case 'warnings':
+                enabled = await this.notificationService.toggleWarnings();
+                break;
+        }
+        // Don't show notification about toggling notifications - just log it
+        console.log(`🔔 ${category} notifications ${enabled ? 'enabled' : 'disabled'}`);
         this.updateView();
     }
 } 
