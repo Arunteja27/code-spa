@@ -35,7 +35,6 @@ export class MusicPlayer {
     private recentlyPlayed: SpotifyTrack[] = [];
     private topTracks: SpotifyTrack[] = [];
     
-    // Separate tracking for what's actually playing vs what's being browsed
     private playbackPlaylist: SpotifyPlaylist | null = null;
     private playbackTrackIndex: number = 0;
 
@@ -46,7 +45,6 @@ export class MusicPlayer {
     }
 
     private initializeFallbackPlaylists() {
-        // demo playlists for when spotify isn't connected
         const ambientPlaylist: Playlist = {
             name: 'Ambient Focus (Demo)',
             description: 'Demo playlist - Connect Spotify for real music!',
@@ -84,7 +82,6 @@ export class MusicPlayer {
         const savedVolume = this.context.globalState.get('musicVolume', 0.3);
         this.volume = savedVolume as number;
 
-        // load spotify playlists if we're already authenticated
         if (this.spotifyService.getIsAuthenticated()) {
             await this.loadSpotifyPlaylists();
         }
@@ -94,12 +91,10 @@ export class MusicPlayer {
         try {
             const allContent = await this.spotifyService.getUserPlaylists();
             
-            // separate special collections from regular playlists
             this.likedSongs = allContent.find(p => p.id === 'liked-songs')?.tracks || [];
             this.recentlyPlayed = allContent.find(p => p.id === 'recently-played')?.tracks || [];
             this.topTracks = allContent.find(p => p.id === 'top-tracks')?.tracks || [];
             
-            // keep only regular playlists
             this.spotifyPlaylists = allContent.filter(p => 
                 !['liked-songs', 'recently-played', 'top-tracks'].includes(p.id)
             );
@@ -116,7 +111,6 @@ export class MusicPlayer {
             if (success) {
                 await this.loadSpotifyPlaylists();
                 
-                // Reset view to library after successful connection
                 this.currentView = 'library';
                 this.currentCategory = null;
                 this.currentPlaylist = null;
@@ -139,7 +133,6 @@ export class MusicPlayer {
         await this.spotifyService.disconnect();
         this.stopVolumeSync();
         
-        // Reset all state to initial disconnected state
         this.spotifyPlaylists = [];
         this.likedSongs = [];
         this.recentlyPlayed = [];
@@ -151,7 +144,6 @@ export class MusicPlayer {
         this.currentTrackIndex = 0;
         this.isPlaying = false;
         
-        // Reset playback context
         this.playbackPlaylist = null;
         this.playbackTrackIndex = 0;
         
@@ -189,31 +181,14 @@ export class MusicPlayer {
     }
 
     showPlayer(): void {
-        if (this.webviewPanel) {
-            this.webviewPanel.reveal();
-            return;
-        }
-
-        this.webviewPanel = vscode.window.createWebviewPanel(
-            'codeSpaMusic',
-            '🎵 Code Spa Music Player',
-            vscode.ViewColumn.Beside,
-            {
-                enableScripts: true,
-                retainContextWhenHidden: true
+        // Redirect to control panel instead of opening separate window
+        vscode.window.showInformationMessage(
+            '🎵 Music player is now available in the Code Spa control panel!',
+            'Open Control Panel'
+        ).then(selection => {
+            if (selection === 'Open Control Panel') {
+                vscode.commands.executeCommand('code-spa.openControlPanel');
             }
-        );
-
-        this.webviewPanel.webview.html = this.getMusicPlayerHTML();
-        
-        this.webviewPanel.webview.onDidReceiveMessage(
-            message => this.handleWebviewMessage(message),
-            undefined,
-            this.context.subscriptions
-        );
-
-        this.webviewPanel.onDidDispose(() => {
-            this.webviewPanel = null;
         });
     }
 
@@ -1160,6 +1135,39 @@ export class MusicPlayer {
                 </div>
             ` : ''}
         `;
+    }
+
+    getSpotifyService(): SpotifyService {
+        return this.spotifyService;
+    }
+
+    async playTrackAtIndex(trackIndex: number): Promise<void> {
+        await this.playTrack(trackIndex);
+    }
+
+    // Expose data for control panel
+    getLikedSongs(): SpotifyTrack[] {
+        return this.likedSongs;
+    }
+
+    getRecentlyPlayed(): SpotifyTrack[] {
+        return this.recentlyPlayed;
+    }
+
+    getTopTracks(): SpotifyTrack[] {
+        return this.topTracks;
+    }
+
+    getSpotifyPlaylists(): SpotifyPlaylist[] {
+        return this.spotifyPlaylists;
+    }
+
+    getCurrentTrack(): SpotifyTrack | null {
+        return this.currentTrack;
+    }
+
+    getIsPlaying(): boolean {
+        return this.isPlaying;
     }
 
     dispose(): void {

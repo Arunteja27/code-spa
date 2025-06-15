@@ -38,7 +38,6 @@ export class SpotifyService {
     private currentUser: SpotifyUser | null = null;
     private authServer: http.Server | null = null;
     
-    // grab creds from env vars or vscode settings - user configures their own app
     private readonly CLIENT_ID: string;
     private readonly CLIENT_SECRET: string;
     private readonly REDIRECT_URI = 'http://127.0.0.1:8888/callback';
@@ -80,10 +79,6 @@ export class SpotifyService {
             redirectUri: this.REDIRECT_URI
         });
 
-        // Disabled auto session restore - user must login each time extension starts
-        // this.restoreSession();
-        
-        // Clear any stored tokens to ensure fresh login each time
         this.clearTokens();
     }
 
@@ -98,7 +93,6 @@ export class SpotifyService {
             await this.startAuthServer();
             await vscode.env.openExternal(vscode.Uri.parse(authUrl));
             
-            // wait for auth to complete
             return new Promise((resolve) => {
                 const checkAuth = setInterval(() => {
                     if (this.isAuthenticated) {
@@ -107,7 +101,6 @@ export class SpotifyService {
                     }
                 }, 1000);
 
-                // timeout after 2 minutes
                 setTimeout(() => {
                     clearInterval(checkAuth);
                     if (!this.isAuthenticated) {
