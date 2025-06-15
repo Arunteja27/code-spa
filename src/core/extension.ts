@@ -2,12 +2,12 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
-import { BackgroundController } from './backgroundController';
-import { MusicPlayer } from './musicPlayer';
-import { ProjectAnalyzer } from './projectAnalyzer';
-import { UICustomizer } from './uiCustomizer';
-import { ControlPanelProvider } from './controlPanelProvider';
-import { NotificationService } from './notificationService';
+import { BackgroundController } from '../services/theming/backgroundController';
+import { MusicPlayer } from '../services/music/musicPlayer';
+import { ProjectAnalyzer } from '../services/analysis/projectAnalyzer';
+import { UICustomizer } from '../services/theming/uiCustomizer';
+import { ControlPanelProvider } from '../providers/controlPanelProvider';
+import { NotificationService } from '../services/notifications/notificationService';
 
 let backgroundController: BackgroundController;
 let musicPlayer: MusicPlayer;
@@ -71,7 +71,9 @@ function registerCommands(context: vscode.ExtensionContext) {
 	});
 
 	const openMusicPlayer = vscode.commands.registerCommand('code-spa.openMusicPlayer', () => {
-		musicPlayer.showPlayer();
+		controlPanelProvider.show();
+		// Navigate to music page
+		vscode.commands.executeCommand('workbench.view.extension.codeSpaPanel');
 	});
 
 	const analyzeProject = vscode.commands.registerCommand('code-spa.analyzeProject', async () => {

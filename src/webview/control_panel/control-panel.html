@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Code Spa Control Panel</title>
+    <link rel="stylesheet" href="{{CSS_URI}}">
+    <style id="dynamic-styles">
+        /* Dynamic styles will be injected here */
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        {{PAGE_CONTENT}}
+    </div>
+
+    <!-- Global Navigation Bar -->
+    <div id="globalNav">
+        <button onclick="smartBack()" style="
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            padding: 8px 16px;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.3s ease;
+        " onmouseover="this.style.background='rgba(255, 255, 255, 0.2)'" onmouseout="this.style.background='rgba(255, 255, 255, 0.1)'" title="Go Back">
+            ← Back
+        </button>
+        
+        <button onclick="navigateTo('home')" style="
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            padding: 8px 16px;
+            color: white;
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.3s ease;
+        " onmouseover="this.style.background='rgba(255, 255, 255, 0.2)'" onmouseout="this.style.background='rgba(255, 255, 255, 0.05)'" title="Go to Code Spa Home">
+            🎨 Home
+        </button>
+        <div style="width: 80px;"></div>
+    </div>
+
+    <script src="{{JS_URI}}"></script>
+</body>
+</html> 
