@@ -7,12 +7,14 @@ import { MusicPlayer } from './musicPlayer';
 import { ProjectAnalyzer } from './projectAnalyzer';
 import { UICustomizer } from './uiCustomizer';
 import { ControlPanelProvider } from './controlPanelProvider';
+import { NotificationService } from './notificationService';
 
 let backgroundController: BackgroundController;
 let musicPlayer: MusicPlayer;
 let projectAnalyzer: ProjectAnalyzer;
 let uiCustomizer: UICustomizer;
 let controlPanelProvider: ControlPanelProvider;
+let notificationService: NotificationService;
 
 // save originals for notification patching
 const originalInfo = vscode.window.showInformationMessage;
@@ -29,6 +31,7 @@ export function activate(context: vscode.ExtensionContext) {
 	projectAnalyzer = new ProjectAnalyzer();
 	uiCustomizer = new UICustomizer(context);
 	controlPanelProvider = new ControlPanelProvider(context);
+	notificationService = NotificationService.getInstance();
 	
 	controlPanelProvider.setUICustomizer(uiCustomizer);
 	controlPanelProvider.setMusicPlayer(musicPlayer);
@@ -45,7 +48,7 @@ export function activate(context: vscode.ExtensionContext) {
 	initializeExtension();
 	setupWorkspaceMonitoring(context);
 
-	vscode.window.showInformationMessage('🎨 Code Spa activated! Open the Control Panel to customize your coding experience.');
+	notificationService.showExtensionActivation('🎨 Code Spa activated! Open the Control Panel to customize your coding experience.');
 }
 
 function registerCommands(context: vscode.ExtensionContext) {
@@ -60,10 +63,10 @@ function registerCommands(context: vscode.ExtensionContext) {
 		
 		if (!enabled) {
 			await backgroundController.enable();
-			vscode.window.showInformationMessage('🖼️ Dynamic backgrounds enabled!');
+			notificationService.showBackgroundChange('🖼️ Dynamic backgrounds enabled!');
 		} else {
 			await backgroundController.disable();
-			vscode.window.showInformationMessage('🖼️ Dynamic backgrounds disabled.');
+			notificationService.showBackgroundChange('🖼️ Dynamic backgrounds disabled.');
 		}
 	});
 
@@ -74,16 +77,16 @@ function registerCommands(context: vscode.ExtensionContext) {
 	const analyzeProject = vscode.commands.registerCommand('code-spa.analyzeProject', async () => {
 		const workspaceFolders = vscode.workspace.workspaceFolders;
 		if (!workspaceFolders) {
-			vscode.window.showWarningMessage('No workspace folder found to analyze.');
+			notificationService.showWarning('No workspace folder found to analyze.');
 			return;
 		}
 
-		vscode.window.showInformationMessage('🔍 Analyzing project context...');
+		notificationService.showProjectAnalysis('🔍 Analyzing project context...');
 		const analysis = await projectAnalyzer.analyzeWorkspace(workspaceFolders[0].uri.fsPath);
 		
 		if (analysis) {
 			await backgroundController.updateBackgroundFromContext(analysis);
-			vscode.window.showInformationMessage(`🎨 Background updated based on ${analysis.projectType} project!`);
+			notificationService.showBackgroundChange(`🎨 Background updated based on ${analysis.projectType} project!`);
 		}
 	});
 
@@ -102,10 +105,10 @@ function registerCommands(context: vscode.ExtensionContext) {
 	});
 
 	const connectSpotify = vscode.commands.registerCommand('code-spa.connectSpotify', async () => {
-		vscode.window.showInformationMessage('🎵 Connecting to Spotify...');
+		notificationService.showSpotifyConnection('🎵 Connecting to Spotify...');
 		const success = await musicPlayer.connectSpotify();
 		if (success) {
-			vscode.window.showInformationMessage('🎵 Successfully connected to Spotify! Your playlists are now available.');
+			notificationService.showSpotifyConnection('🎵 Successfully connected to Spotify! Your playlists are now available.');
 		}
 	});
 
