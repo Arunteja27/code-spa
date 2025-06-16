@@ -14,7 +14,7 @@ Transform your coding sessions with AI-powered backgrounds and your favorite Spo
 - Connect your Spotify Premium account
 - Access your liked songs, playlists, and recent tracks
 - Full music controls right in VS Code
-- Code to your own soundtrack!
+- Code to your own soundtrack!!
 
 <video src="media/mvp4.0-demo.mp4" controls width="600"></video>
 
