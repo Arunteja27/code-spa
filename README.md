@@ -1,5 +1,3 @@
-
-https://github.com/user-attachments/assets/fe23cb62-6710-472e-96d2-cb6c6824b313
 # Code Spa - VS Code Extension
 
 Transform your coding sessions with AI-powered backgrounds and your favorite Spotify tunes! 🎵
@@ -18,9 +16,7 @@ Transform your coding sessions with AI-powered backgrounds and your favorite Spo
 - Full music controls right in VS Code
 - Code to your own soundtrack!!
 
-[![Watch the demo](https://img.youtube.com/vi/_rOYK5qFv5A/0.jpg)](https://youtu.be/_rOYK5qFv5A)
-
-
+https://github.com/user-attachments/assets/fe23cb62-6710-472e-96d2-cb6c6824b313
 
 ## Need Help?
 
