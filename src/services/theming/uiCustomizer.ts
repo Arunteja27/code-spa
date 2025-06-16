@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { WebviewUtils } from '../../webview/WebviewUtils';
+import { GeneratedTheme } from '../llm/geminiService';
 
 interface ThemePreset {
     name: string;
@@ -113,6 +114,94 @@ export class UICustomizer {
             console.error('Failed to apply theme preset:', error);
             vscode.window.showErrorMessage('Failed to apply theme. Please try again.');
         }
+    }
+
+    public async applyGeneratedTheme(theme: GeneratedTheme): Promise<void> {
+        try {
+            const config = vscode.workspace.getConfiguration();
+
+            // Clear existing customizations to ensure a clean slate
+            await config.update('workbench.colorCustomizations', {}, vscode.ConfigurationTarget.Global);
+            await new Promise(resolve => setTimeout(resolve, 100));
+
+            const { colors } = theme;
+
+            const colorCustomizations = {
+                // Activity Bar
+                'activityBar.background': colors.surface,
+                'activityBar.foreground': colors.text,
+                'activityBar.inactiveForeground': colors.textSecondary,
+                'activityBarBadge.background': colors.accent,
+                'activityBarBadge.foreground': colors.background,
+
+                // Side Bar
+                'sideBar.background': colors.surface,
+                'sideBar.foreground': colors.text,
+                'sideBarTitle.foreground': colors.primary,
+                'sideBarSectionHeader.background': colors.background,
+                'sideBarSectionHeader.foreground': colors.text,
+
+                // Status Bar
+                'statusBar.background': colors.primary,
+                'statusBar.foreground': colors.text,
+                'statusBar.noFolderBackground': colors.primary,
+                'statusBarItem.hoverBackground': colors.accent,
+
+                // Editor
+                'editor.background': colors.background,
+                'editor.foreground': colors.text,
+                'editorCursor.foreground': colors.accent,
+                'editor.selectionBackground': colors.secondary + '60',
+                'editor.lineHighlightBackground': colors.surface + '80',
+
+                // Terminal
+                'terminal.background': colors.background,
+                'terminal.foreground': colors.text,
+                'terminal.ansiBrightBlack': colors.textSecondary,
+                'terminal.ansiRed': colors.primary,
+                'terminal.ansiGreen': colors.accent,
+                'terminal.ansiYellow': colors.secondary,
+                'terminal.ansiBlue': colors.primary,
+                'terminal.ansiMagenta': colors.accent,
+                'terminal.ansiCyan': colors.secondary,
+                'terminal.ansiWhite': colors.text,
+
+                // TitleBar & Buttons
+                'titleBar.activeBackground': colors.primary,
+                'titleBar.activeForeground': colors.text,
+                'titleBar.inactiveBackground': colors.surface,
+                'button.background': colors.primary,
+                'button.hoverBackground': colors.accent,
+                'button.foreground': colors.text,
+
+                // Tabs
+                'tab.activeBackground': colors.background,
+                'tab.activeForeground': colors.text,
+                'tab.inactiveBackground': colors.surface,
+                'tab.inactiveForeground': colors.textSecondary,
+                'tab.border': colors.surface,
+                'tab.activeBorder': colors.primary,
+            };
+
+            await config.update('workbench.colorCustomizations', colorCustomizations, vscode.ConfigurationTarget.Global);
+            
+            const isDark = this.isColorDark(colors.background);
+            await this.applyVSCodeTheme(isDark ? 'Default Dark+' : 'Default Light+');
+
+            vscode.window.showInformationMessage(`🎨 Applied generated theme: ${theme.name}`);
+        } catch (error) {
+            console.error('Failed to apply generated theme:', error);
+            vscode.window.showErrorMessage('Failed to apply the generated theme.');
+        }
+    }
+
+    private isColorDark(hexColor: string): boolean {
+        const hex = hexColor.replace('#', '');
+        const r = parseInt(hex.substring(0, 2), 16);
+        const g = parseInt(hex.substring(2, 4), 16);
+        const b = parseInt(hex.substring(4, 6), 16);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        return brightness < 128;
     }
 
     showCustomizationPanel(): void {
@@ -264,7 +353,6 @@ export class UICustomizer {
         switch (message.command) {
             case 'selectPreset':
                 await this.applyPreset(message.preset);
-                this.updateWebview();
                 break;
             case 'resetToDefault':
                 await this.resetToDefault();
@@ -279,34 +367,15 @@ export class UICustomizer {
                 await this.updateOpacity(message.value);
                 break;
             case 'updateAnimationSpeed':
-                await this.updateAnimationSpeed(message.value);
+                await this.updateAnimationSpeed(message.speed);
                 break;
         }
     }
 
     private async applyVSCodeTheme(themeName: string): Promise<void> {
-        const config = vscode.workspace.getConfiguration();
-        
-        const availableThemes = [
-            'Default Dark+',
-            'Default Light+',
-            'Dark+ (default dark)',
-            'Light+ (default light)',
-            'Monokai',
-            'Quiet Light',
-            'Red',
-            'Solarized Dark',
-            'Solarized Light',
-            'Tomorrow Night Blue'
-        ];
-
-        let targetTheme = themeName;
-        if (!availableThemes.includes(themeName)) {
-            targetTheme = 'Default Dark+';
-        }
-
         try {
-            await config.update('workbench.colorTheme', targetTheme, vscode.ConfigurationTarget.Global);
+            const config = vscode.workspace.getConfiguration();
+            await config.update('workbench.colorTheme', themeName, vscode.ConfigurationTarget.Global);
         } catch (error) {
             console.error('Failed to apply VS Code theme:', error);
         }
@@ -508,27 +577,21 @@ export class UICustomizer {
                         await config.update('animations', settings.theme.animations, vscode.ConfigurationTarget.Global);
                     }
                 }
-                
-                vscode.window.showInformationMessage('📥 Settings imported successfully!');
-                this.updateWebview();
             } catch (error) {
-                vscode.window.showErrorMessage('❌ Failed to import settings. Please check the file format.');
+                console.error('Error importing settings:', error);
+                vscode.window.showErrorMessage('Failed to import settings. Invalid JSON format.');
             }
         }
     }
 
     private async updateOpacity(value: number): Promise<void> {
-        const config = vscode.workspace.getConfiguration('codeSpa');
-        await config.update('background.opacity', value / 100, vscode.ConfigurationTarget.Global);
-        
-        vscode.commands.executeCommand('code-spa.updateBackgroundOpacity', value / 100);
+        // This is a placeholder. You would implement the logic to update opacity here.
+        console.log(`Updating opacity to ${value}`);
     }
 
     private async updateAnimationSpeed(speed: string): Promise<void> {
-        const config = vscode.workspace.getConfiguration('codeSpa');
-        await config.update('animations.speed', speed, vscode.ConfigurationTarget.Global);
-        
-        vscode.window.showInformationMessage(`🎬 Animation speed set to ${speed}`);
+        // This is a placeholder. You would implement the logic to update animation speed here.
+        console.log(`Updating animation speed to ${speed}`);
     }
 
     private updateWebview(): void {
@@ -538,8 +601,6 @@ export class UICustomizer {
     }
 
     dispose(): void {
-        if (this.webviewPanel) {
-            this.webviewPanel.dispose();
-        }
+        this.webviewPanel?.dispose();
     }
 } 

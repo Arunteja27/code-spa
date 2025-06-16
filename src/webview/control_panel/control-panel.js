@@ -1,13 +1,11 @@
 const vscode = acquireVsCodeApi();
 
 function sendMessage(type, data = {}) {
-    // Immediate feedback for play/pause
     if (type === 'togglePlayback') {
         const playPauseBtns = ['playPauseBtn', 'playPauseBtnCategory', 'playPauseBtnPlaylist'];
         playPauseBtns.forEach(id => {
             const btn = document.getElementById(id);
             if (btn) {
-                // Toggle the button immediately for responsiveness
                 btn.textContent = btn.textContent === '▶' ? '⏸' : '▶';
             }
         });
@@ -21,10 +19,8 @@ let navigationHistory = ['home'];
 let spotifyNavigationStack = [];
 
 function navigateTo(page) {
-    // Track navigation for back button
     if (navigationHistory[navigationHistory.length - 1] !== page) {
         navigationHistory.push(page);
-        // Keep history reasonable size
         if (navigationHistory.length > 10) {
             navigationHistory = navigationHistory.slice(-10);
         }
@@ -34,11 +30,11 @@ function navigateTo(page) {
 
 function goBack() {
     if (navigationHistory.length > 1) {
-        navigationHistory.pop(); // Remove current page
+        navigationHistory.pop();
         const previousPage = navigationHistory[navigationHistory.length - 1];
         sendMessage('navigate', { page: previousPage });
     } else {
-        navigateTo('home'); // Fallback to home
+        navigateTo('home');
     }
 }
 
@@ -49,7 +45,6 @@ function smartBack() {
 // Track Spotify navigation
 function trackSpotifyNavigation(view) {
     spotifyNavigationStack.push(view);
-    // Keep stack reasonable size
     if (spotifyNavigationStack.length > 10) {
         spotifyNavigationStack = spotifyNavigationStack.slice(-10);
     }
@@ -58,7 +53,6 @@ function trackSpotifyNavigation(view) {
 // Override sendMessage to track Spotify navigation
 const originalSendMessage = sendMessage;
 sendMessage = function(type, data = {}) {
-    // Track Spotify navigation events
     if (type === 'openLikedSongs' || type === 'openRecentlyPlayed' || type === 'openTopTracks') {
         trackSpotifyNavigation('library');
     } else if (type === 'openPlaylists') {
@@ -87,6 +81,10 @@ function toggleBackground() {
 
 function analyzeProject() {
     sendMessage('analyzeProject');
+}
+
+function generateLLMTheme() {
+    sendMessage('generateLLMTheme');
 }
 
 function customizeTheme() {
@@ -151,10 +149,7 @@ function seekToPosition(event) {
     const clickX = event.clientX - rect.left;
     const percentage = Math.max(0, Math.min(100, (clickX / rect.width) * 100));
     
-    // Immediate visual feedback
     updateProgressVisually(percentage);
-    
-    // Send seek command
     sendMessage('seekToPosition', { percentage: percentage });
 }
 
@@ -194,7 +189,6 @@ function onDrag(event) {
     const clickX = event.clientX - rect.left;
     const percentage = Math.max(0, Math.min(100, (clickX / rect.width) * 100));
     
-    // Immediate visual feedback during drag
     updateProgressVisually(percentage);
 }
 
@@ -205,7 +199,6 @@ function stopDrag(event) {
     const clickX = event.clientX - rect.left;
     const percentage = Math.max(0, Math.min(100, (clickX / rect.width) * 100));
     
-    // Send final seek command
     sendMessage('seekToPosition', { percentage: percentage });
     
     isDragging = false;
@@ -213,7 +206,6 @@ function stopDrag(event) {
     document.removeEventListener('mousemove', onDrag);
     document.removeEventListener('mouseup', stopDrag);
     
-    // Reset cursor
     const handles = document.querySelectorAll('.progress-handle');
     handles.forEach(handle => handle.style.cursor = 'grab');
     setTimeout(()=>{ isUserDraggingProgress = false; }, 500);
@@ -221,6 +213,45 @@ function stopDrag(event) {
 
 // Add interactive effects
 document.addEventListener('DOMContentLoaded', function() {
+    // GitHub button
+    const githubBtn = document.getElementById('github-btn');
+    if (githubBtn) {
+        githubBtn.addEventListener('click', () => {
+            sendMessage('openExternal', { url: 'https://github.com/Arunteja27/code-spa' });
+        });
+    }
+
+    // Master notification toggle
+    const masterToggle = document.getElementById('toggle-all-notifications');
+    if (masterToggle) {
+        masterToggle.addEventListener('click', () => {
+            const individualToggles = document.querySelectorAll('.notification-toggle[data-category]');
+            const allOn = Array.from(individualToggles).every(t => t.classList.contains('enabled'));
+            
+            const newState = !allOn; // If all are on, new state is off, and vice versa.
+
+            // Toggle each category through VS Code extension
+            individualToggles.forEach(toggle => {
+                const category = toggle.dataset.category;
+                const isEnabled = toggle.classList.contains('enabled');
+
+                if (isEnabled !== newState) {
+                    sendMessage('toggleNotifications', { category: category });
+                }
+            });
+
+            // Update master button state immediately to show feedback
+            masterToggle.textContent = newState ? 'ALL OFF' : 'ALL ON';
+            if (newState) {
+                masterToggle.classList.add('enabled');
+                masterToggle.classList.remove('disabled');
+            } else {
+                masterToggle.classList.add('disabled');
+                masterToggle.classList.remove('enabled');
+            }
+        });
+    }
+
     const buttons = document.querySelectorAll('.control-button, .theme-card, .music-button, .spotify-card, .playlist-item, .track-item');
     buttons.forEach(button => {
         button.addEventListener('click', function() {
@@ -231,19 +262,13 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Update play/pause button more frequently for responsiveness
+    // Update playback state less frequently to avoid rate limiting
     setInterval(() => {
         sendMessage('getCurrentPlaybackState');
-    }, 1000);
-
-    // Update progress bar every second when playing
-    setInterval(updateProgressBar, 1000);
+    }, 3000); // Reduced from 1000ms to 3000ms (3 seconds)
 });
 
-// Function to periodically update progress bar
-function updateProgressBar() {
-    sendMessage('getCurrentPlaybackState');
-}
+// Function to periodically update progress bar (removed duplicate)
 
 function formatTime(milliseconds) {
     if (!milliseconds || isNaN(milliseconds)) return '0:00';

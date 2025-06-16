@@ -69,6 +69,11 @@
         "command": "code-spa.disconnectSpotify",
         "title": "Disconnect from Spotify",
         "category": "Code Spa"
+      },
+      {
+        "command": "code-spa.generateLLMTheme",
+        "title": "Generate AI Theme",
+        "category": "Code Spa"
       }
     ],
     "configuration": {
@@ -107,6 +112,11 @@
           "type": "string",
           "default": "",
           "description": "OpenAI API key for AI features (optional)"
+        },
+        "codeSpa.geminiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Google Gemini API key for LLM theme generation (free tier available)"
         },
         "codeSpa.theme.preset": {
           "type": "string",
@@ -231,6 +241,7 @@
     "test": "vscode-test"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@types/dotenv": "^8.2.3",
     "@types/spotify-web-api-node": "^5.0.11",
     "axios": "^1.6.2",

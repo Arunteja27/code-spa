@@ -40,12 +40,37 @@ export class MusicPlayer {
     private playbackTrackIndex: number = 0;
     private trackEndTimer: NodeJS.Timeout | null = null;
     private webviewUtils: WebviewUtils;
+    private likedCount: number = 0;
+    private recentCount: number = 0;
+    private topCount: number = 0;
+    private playlistCount: number = 0;
 
-    constructor(context: vscode.ExtensionContext) {
+    private constructor(context: vscode.ExtensionContext, spotifyService: SpotifyService) {
         this.context = context;
-        this.spotifyService = new SpotifyService(context);
+        this.spotifyService = spotifyService;
         this.webviewUtils = new WebviewUtils(context);
         this.initializeFallbackPlaylists();
+    }
+
+    public static async create(context: vscode.ExtensionContext): Promise<MusicPlayer> {
+        console.log('🎵 MusicPlayer: Creating instance...');
+        const spotifyService = new SpotifyService(context);
+        const player = new MusicPlayer(context, spotifyService);
+        
+        spotifyService.initialize().then(async () => {
+            console.log('🎵 MusicPlayer: SpotifyService initialized, updating UI');
+            if (spotifyService.getIsAuthenticated()) {
+                await player.loadSpotifyPlaylists();
+            }
+            player.updateWebview();
+        }).catch(error => {
+            console.error('🎵 MusicPlayer: SpotifyService initialization failed:', error);
+            player.updateWebview();
+        });
+        
+        await player.initialize();
+        console.log('🎵 MusicPlayer: Player initialized');
+        return player;
     }
 
     private initializeFallbackPlaylists() {
@@ -81,7 +106,7 @@ export class MusicPlayer {
         if (this.isInitialized) return;
 
         this.isInitialized = true;
-        console.log('🎵 Music player initialized');
+        console.log('🎵 music player initialized');
 
         const savedVolume = this.context.globalState.get('musicVolume', 0.3);
         this.volume = savedVolume as number;
@@ -93,7 +118,9 @@ export class MusicPlayer {
 
     private async loadSpotifyPlaylists(): Promise<void> {
         try {
+            console.log('🎵 Loading Spotify playlists...');
             const allContent = await this.spotifyService.getUserPlaylists();
+            console.log('🎵 Received Spotify content:', allContent.length, 'items');
             
             this.likedSongs = allContent.find(p => p.id === 'liked-songs')?.tracks || [];
             this.recentlyPlayed = allContent.find(p => p.id === 'recently-played')?.tracks || [];
@@ -122,7 +149,7 @@ export class MusicPlayer {
                 
                 this.startVolumeSync();
                 this.updateWebview();
-                vscode.window.showInformationMessage(`🎵 Connected! Found ${this.spotifyPlaylists.length} playlists`);
+                vscode.window.showInformationMessage('🎵 Connected to Spotify!');
                 return true;
             }
             return false;
@@ -204,6 +231,7 @@ export class MusicPlayer {
     }
 
     private getMusicPlayerContent(): string {
+        const connectionStatus = this.spotifyService.getConnectionStatus();
         const isSpotifyConnected = this.spotifyService.getIsAuthenticated();
         const user = this.spotifyService.getUser();
         
@@ -213,13 +241,28 @@ export class MusicPlayer {
                 <h2>Code Spa Music Player</h2>
             </div>
 
-            <div class="connection-status ${isSpotifyConnected ? 'connected' : 'disconnected'}">
-                ${isSpotifyConnected ? `
+            <div class="connection-status ${connectionStatus}">
+                ${connectionStatus === 'connecting' ? `
+                    <div>
+                        <strong>🔄 Connecting to Spotify...</strong>
+                        <br>
+                        <span>Validating your authentication</span>
+                        <div class="loading-spinner">⏳</div>
+                    </div>
+                ` : isSpotifyConnected ? `
                     <div>
                         <strong>✅ Connected to Spotify</strong>
                         <br>
                         <span>Welcome, ${user?.displayName || 'User'}!</span>
-                        <button class="disconnect-btn" onclick="disconnectSpotify()">Disconnect</button>
+                        <button class="disconnect-btn" onclick="disconnectSpotify()">Disconnect Spotify</button>
+                    </div>
+                ` : connectionStatus === 'error' ? `
+                    <div>
+                        <strong>❌ Connection Failed</strong>
+                        <br>
+                        <span>Unable to connect to Spotify. Please try again.</span>
+                        <br>
+                        <button class="connect-btn" onclick="connectSpotify()">Retry Connection</button>
                     </div>
                 ` : `
                     <div>
@@ -232,7 +275,12 @@ export class MusicPlayer {
                 `}
             </div>
 
-            ${isSpotifyConnected ? this.getContentHTML() : ''}
+            ${isSpotifyConnected ? this.getContentHTML() : connectionStatus === 'connecting' ? `
+                <div style="text-align: center; margin: 40px 0; opacity: 0.7;">
+                    <div class="loading-spinner" style="font-size: 2rem; margin-bottom: 10px;">🔄</div>
+                    <p>Setting up your music library...</p>
+                </div>
+            ` : ''}
 
             <div class="volume-container">
                 <label>Volume: ${this.currentSpotifyVolume}% (Spotify App)</label>
@@ -432,24 +480,15 @@ export class MusicPlayer {
     }
 
     private selectCategory(category: string): void {
-        this.currentCategory = category as 'liked-songs' | 'recently-played' | 'top-tracks' | 'playlists';
-        
-        if (category === 'playlists') {
-            this.currentView = 'playlists';
-        } else {
-            this.currentView = 'category';
-            const tracks = this.getCategoryTracks(category);
-            this.currentPlaylist = {
-                id: category,
-                name: this.getCategoryTitle(category),
-                tracks: tracks,
-                imageUrl: undefined,
-                description: '',
-                owner: 'Spotify'
-            } as SpotifyPlaylist;
-        }
-        
-        this.updateWebview();
+        this.currentCategory = category as any;
+        const loadAndShow = async () => {
+            if (this.likedSongs.length === 0 && this.spotifyPlaylists.length === 0) {
+                await this.loadSpotifyPlaylists();
+            }
+            this.currentView = category === 'playlists' ? 'playlists' : 'category';
+            this.updateWebview();
+        };
+        loadAndShow();
     }
 
     private goBack(): void {
@@ -499,10 +538,10 @@ export class MusicPlayer {
     }
 
     private getLibraryTilesHTML(): string {
-        const likedCount = this.likedSongs.length;
-        const recentCount = this.recentlyPlayed.length;
-        const topCount = this.topTracks.length;
-        const playlistCount = this.spotifyPlaylists.length;
+        const likedCount = this.likedSongs.length || this.likedCount;
+        const recentCount = this.recentlyPlayed.length || this.recentCount;
+        const topCount = this.topTracks.length || this.topCount;
+        const playlistCount = this.spotifyPlaylists.length || this.playlistCount;
 
         return `
             <div class="library-tiles">

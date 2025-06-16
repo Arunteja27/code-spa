@@ -41,8 +41,17 @@ export class BackgroundController {
         ]
     };
 
-    constructor(context: vscode.ExtensionContext) {
+    private constructor(context: vscode.ExtensionContext) {
         this.context = context;
+    }
+
+    public static async create(context: vscode.ExtensionContext): Promise<BackgroundController> {
+        const controller = new BackgroundController(context);
+        const config = vscode.workspace.getConfiguration('codeSpa');
+        if (config.get('background.enabled', true)) {
+            await controller.enable();
+        }
+        return controller;
     }
 
     async enable(): Promise<void> {

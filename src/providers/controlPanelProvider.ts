@@ -4,6 +4,8 @@ import { MusicPlayer } from '../services/music/musicPlayer';
 import { SpotifyTrack, SpotifyPlaylist } from '../services/spotify/spotifyService';
 import { NotificationService } from '../services/notifications/notificationService';
 import { WebviewUtils } from '../webview/WebviewUtils';
+import { LLMThemeGenerator } from '../services/llm/llmThemeGenerator';
+import { GeneratedTheme } from '../services/llm/geminiService';
 
 export class ControlPanelProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'codeSpaControlPanel';
@@ -12,6 +14,8 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
     private uiCustomizer?: UICustomizer;
     private musicPlayer?: MusicPlayer;
     private notificationService: NotificationService;
+    private llmThemeGenerator: LLMThemeGenerator;
+    private latestGeneratedTheme: GeneratedTheme | null = null;
     
     private currentPlaybackContext: { tracks: any[]; currentIndex: number; category?: string; playlistId?: string } | null = null;
     private webviewUtils: WebviewUtils;
@@ -29,6 +33,7 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
     constructor(private readonly _extensionContext: vscode.ExtensionContext) {
         this.notificationService = NotificationService.getInstance();
         this.webviewUtils = new WebviewUtils(_extensionContext);
+        this.llmThemeGenerator = new LLMThemeGenerator();
     }
 
     public setUICustomizer(uiCustomizer: UICustomizer) {
@@ -80,11 +85,18 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                 break;
 
             case 'applyTheme':
-                if (this.uiCustomizer) {
-                    await this.uiCustomizer.applyPreset(message.theme);
-                    this.notificationService.showThemeChange(`🎨 Applied ${message.theme} theme!`);
+                if (message.theme === 'llmInsights' && this.latestGeneratedTheme) {
+                    if (this.uiCustomizer) {
+                        await this.uiCustomizer.applyGeneratedTheme(this.latestGeneratedTheme);
+                        this.notificationService.showThemeChange(`🎨 Applied AI theme "${this.latestGeneratedTheme.name}"!`);
+                    }
                 } else {
-                    vscode.commands.executeCommand('code-spa.customizeTheme');
+                    if (this.uiCustomizer) {
+                        await this.uiCustomizer.applyPreset(message.theme);
+                        this.notificationService.showThemeChange(`🎨 Applied ${message.theme} theme!`);
+                    } else {
+                        vscode.commands.executeCommand('code-spa.customizeTheme');
+                    }
                 }
                 break;
 
@@ -162,16 +174,41 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                 vscode.commands.executeCommand('code-spa.analyzeProject');
                 break;
 
+            case 'generateLLMTheme':
+                await this._handleLLMThemeGeneration();
+                break;
+
             case 'openMusicPlayer':
                 vscode.commands.executeCommand('code-spa.openMusicPlayer');
                 break;
 
+            case 'openExternal':
+                if (message.url) {
+                    vscode.env.openExternal(vscode.Uri.parse(message.url));
+                }
+                break;
+            
             case 'customizeTheme':
                 vscode.commands.executeCommand('code-spa.customizeTheme');
                 break;
 
             case 'toggleNotifications':
                 await this._toggleNotifications(message.category);
+                break;
+
+            case 'openExtensionSettings':
+                // Try multiple approaches to open settings
+                try {
+                    await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:code-spa.code-spa');
+                } catch {
+                    try {
+                        await vscode.commands.executeCommand('workbench.action.openSettings', 'codeSpa');
+                    } catch {
+                        // Fallback: open general settings and show a message
+                        vscode.commands.executeCommand('workbench.action.openSettings');
+                        vscode.window.showInformationMessage('Search for "Code Spa" in the settings to configure Spotify API keys, OpenAI settings, etc.');
+                    }
+                }
                 break;
 
             case 'refreshPlaylists':
@@ -337,15 +374,19 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
         const config = vscode.workspace.getConfiguration('codeSpa');
         const backgroundEnabled = config.get('background.enabled', true);
         
-        const isSpotifyConnected = this.musicPlayer?.getSpotifyService().getIsAuthenticated() || false;
-        const user = this.musicPlayer?.getSpotifyService().getUser();
-        const currentTrack = this.musicPlayer?.getCurrentTrack() || null;
-        const isPlaying = this.musicPlayer?.getIsPlaying() || false;
+        // Check if music player and Spotify are available
+        const musicPlayerReady = !!this.musicPlayer;
+        const connectionStatus = musicPlayerReady && this.musicPlayer ? this.musicPlayer.getSpotifyService().getConnectionStatus() : 'disconnected';
+        const isSpotifyConnected = musicPlayerReady && this.musicPlayer ? this.musicPlayer.getSpotifyService().getIsAuthenticated() : false;
+        const user = musicPlayerReady && this.musicPlayer ? this.musicPlayer.getSpotifyService().getUser() : null;
+        const currentTrack = musicPlayerReady && this.musicPlayer ? this.musicPlayer.getCurrentTrack() : null;
+        const isPlaying = musicPlayerReady && this.musicPlayer ? this.musicPlayer.getIsPlaying() : false;
 
         // Dynamic nav title based on current page
         const navTitleText = this.currentPage === 'home' ? '🎨 Code Spa'
             : this.currentPage === 'music' ? '🎵 Music Player'
             : this.currentPage === 'themes' ? '🎨 Themes'
+            : this.currentPage === 'settings' ? '⚙️ Settings'
             : this.currentPage === 'notifications' ? '🔔 Notifications'
             : 'ℹ️ About';
 
@@ -369,7 +410,10 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                 pageContent = this._getThemesPageContent();
                 break;
             case 'music':
-                pageContent = this._getMusicPageContent(isSpotifyConnected, user, currentTrack, isPlaying);
+                pageContent = this._getMusicPageContent(musicPlayerReady, connectionStatus, isSpotifyConnected, user, currentTrack, isPlaying);
+                break;
+            case 'settings':
+                pageContent = this._getSettingsPageContent(config);
                 break;
             case 'notifications':
                 pageContent = this._getNotificationsPageContent(config);
@@ -393,6 +437,20 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
     }
 
     private _getThemesPageContent(): string {
+        const llmCard = this.latestGeneratedTheme ? `
+                    <div class="theme-card" onclick="applyTheme('llmInsights')">
+                        <div class="theme-name">LLM Insights: ${this.latestGeneratedTheme.name}</div>
+                        <div class="theme-description">${this.latestGeneratedTheme.description}</div>
+                        <div class="color-palette">
+                            <div class="color-swatch" style="background: ${this.latestGeneratedTheme.colors.primary};" title="Primary: ${this.latestGeneratedTheme.colors.primary}"></div>
+                            <div class="color-swatch" style="background: ${this.latestGeneratedTheme.colors.secondary};" title="Secondary: ${this.latestGeneratedTheme.colors.secondary}"></div>
+                            <div class="color-swatch" style="background: ${this.latestGeneratedTheme.colors.accent};" title="Accent: ${this.latestGeneratedTheme.colors.accent}"></div>
+                            <div class="color-swatch" style="background: ${this.latestGeneratedTheme.colors.background};" title="Background: ${this.latestGeneratedTheme.colors.background}"></div>
+                            <div class="color-swatch" style="background: ${this.latestGeneratedTheme.colors.surface};" title="Surface: ${this.latestGeneratedTheme.colors.surface}"></div>
+                            <div class="color-swatch" style="background: ${this.latestGeneratedTheme.colors.text};" title="Text: ${this.latestGeneratedTheme.colors.text}"></div>
+                        </div>
+                    </div>` : '';
+
         return `
             <div class="controls-section">
                 <h2 class="section-title">🎨 Theme & Appearance</h2>
@@ -451,6 +509,7 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                             <div class="color-swatch" style="background: #0284c7;"></div>
                         </div>
                     </div>
+                    ${llmCard}
                 </div>
                 
                 <div class="controls">
@@ -463,7 +522,7 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
         `;
     }
 
-    private _getMusicPageContent(isSpotifyConnected: boolean, user: any, currentTrack: SpotifyTrack | null, isPlaying: boolean): string {
+    private _getMusicPageContent(musicPlayerReady: boolean, connectionStatus: string, isSpotifyConnected: boolean, user: any, currentTrack: SpotifyTrack | null, isPlaying: boolean): string {
         if (!isSpotifyConnected) {
             return `
                 <div class="controls-section">
@@ -919,14 +978,46 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
         `;
     }
 
+    private _getSettingsPageContent(config: any): string {
+        return `
+            <div class="controls-section">
+                <div class="settings-grid">
+                    <button class="control-button" onclick="navigateTo('notifications')">
+                        <span class="control-icon">🔔</span>
+                        Notification Settings
+                    </button>
+                    
+                    <button class="control-button" onclick="openExtensionSettings()">
+                        <span class="control-icon">🔧</span>
+                        Extension Configuration
+                        <div style="font-size: 0.8rem; opacity: 0.7; margin-top: 5px;">
+                            API keys, LLM settings, etc.
+                        </div>
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+
     private _getNotificationsPageContent(config: any): string {
         const notificationConfig = config.get('notifications', {});
         const notificationSettings = this._getNotificationSettings(notificationConfig);
         
         return `
             <div class="controls-section">
-                <h2 class="section-title">🔔 Notification Settings</h2>
+                
                 <p style="opacity: 0.8; margin-bottom: 20px;">Control which notifications Code Spa shows you</p>
+                
+                <div class="stat-item" style="margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 15px;">
+                    <span>🔔 <strong>All Notifications</strong></span>
+                    <button 
+                        id="toggle-all-notifications" 
+                        class="notification-toggle ${this._areAllNotificationsEnabled(notificationConfig) ? 'enabled' : 'disabled'}"
+                    >
+                        ${this._areAllNotificationsEnabled(notificationConfig) ? 'ALL OFF' : 'ALL ON'}
+                    </button>
+                </div>
+
                 <div class="notification-controls">
                     ${notificationSettings}
                 </div>
@@ -937,11 +1028,11 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
     private _getAboutPageContent(config: any, backgroundEnabled: boolean): string {
         return `
             <div class="controls-section">
-                <h2 class="section-title">ℹ️ About Code Spa</h2>
+                
                 <div class="quick-stats">
                     <div class="stat-item">
                         <span>Version</span>
-                        <span class="stat-value">2.0.0</span>
+                        <span class="stat-value">4.0</span>
                     </div>
                     <div class="stat-item">
                         <span>Theme</span>
@@ -955,10 +1046,10 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                 <p>Code Spa transforms your VS Code into a personalized coding sanctuary with dynamic themes, ambient music, and intelligent project analysis.</p>
                 
                 <div class="controls">
-                    <button class="control-button" onclick="vscode.env.openExternal(vscode.Uri.parse('https://github.com/your-username/code-spa'))">
+                    <div id="github-btn" class="control-button github-button">
                         <span class="control-icon">🌐</span>
                         View on GitHub
-                    </button>
+                    </div>
                 </div>
             </div>
         `;
@@ -987,13 +1078,13 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                     <span class="control-icon">🖼️</span>
                     Dynamic Backgrounds ${backgroundEnabled ? 'ON' : 'OFF'}
                 </button>
-                <button class="control-button" onclick="analyzeProject()">
-                    <span class="control-icon">🔍</span>
-                    Analyze Project Context
+                <button class="control-button" onclick="generateLLMTheme()">
+                    <span class="control-icon">🤖</span>
+                    LLM Theme Gen
                 </button>
-                <button class="control-button" onclick="navigateTo('notifications')">
-                    <span class="control-icon">🔔</span>
-                    Notification Settings
+                <button class="control-button" onclick="navigateTo('settings')">
+                    <span class="control-icon">⚙️</span>
+                    Settings
                 </button>
                 <button class="control-button" onclick="navigateTo('about')">
                     <span class="control-icon">ℹ️</span>
@@ -1019,6 +1110,7 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                 <div class="stat-item" style="margin-bottom: 10px;">
                     <span>${category.icon} ${category.label}</span>
                     <button class="notification-toggle ${isEnabled ? 'enabled' : 'disabled'}" 
+                            data-category="${category.key}"
                             onclick="toggleNotifications('${category.key}')">
                         ${isEnabled ? 'ON' : 'OFF'}
                     </button>
@@ -1102,8 +1194,14 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                     }
                 });
             }
-        } catch (error) {
-            console.error('Failed to get playback state:', error);
+        } catch (error: any) {
+            // Handle rate limiting (429) and other errors gracefully
+            if (error?.statusCode === 429) {
+                console.warn('Spotify API rate limit reached. Reducing request frequency.');
+                // Don't log the full error for rate limiting to reduce noise
+            } else {
+                console.error('Failed to get playback state:', error);
+            }
         }
     }
 
@@ -1113,6 +1211,44 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                 type: 'nowPlayingUpdate',
                 track: this.currentTrackInfo
             });
+        }
+    }
+
+    private _areAllNotificationsEnabled(config: any): boolean {
+        const categories = [
+            'extensionActivation', 'backgroundChanges', 'projectAnalysis', 
+            'spotifyConnection', 'warnings', 'errors'
+        ];
+        return categories.every(category => config[category] !== false);
+    }
+
+    private async _handleLLMThemeGeneration(): Promise<void> {
+        try {
+            const result = await this.llmThemeGenerator.generateThemeForCurrentProject();
+            
+            if (result.success && result.theme) {
+                // Save theme and refresh UI
+                this.latestGeneratedTheme = result.theme;
+                await vscode.window.showInformationMessage(
+                    `🎨 LLM generated a new theme "${result.theme.name}"! Open Theme & Appearance tab to preview and apply it.`,
+                    'Open Themes'
+                ).then(action => {
+                    if (action === 'Open Themes') {
+                        this.currentPage = 'themes';
+                        this._updateWebview();
+                    }
+                });
+                // Refresh view to include new card
+                this._updateWebview();
+            } else {
+                // Show error message
+                vscode.window.showErrorMessage(
+                    `Failed to generate theme: ${result.error || 'Unknown error'}`
+                );
+            }
+        } catch (error) {
+            console.error('LLM Theme Generation error:', error);
+            vscode.window.showErrorMessage('Failed to generate AI theme. Please try again.');
         }
     }
 } 

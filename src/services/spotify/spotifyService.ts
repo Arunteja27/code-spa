@@ -40,10 +40,13 @@ export interface PlaybackState {
     device?: string;
 }
 
+export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error';
+
 export class SpotifyService {
     private spotifyApi: SpotifyWebApi;
     private context: vscode.ExtensionContext;
     private isAuthenticated: boolean = false;
+    private connectionStatus: ConnectionStatus = 'disconnected';
     private user: SpotifyUser | null = null;
     private server: http.Server | null = null;
     private codeVerifier: string = '';
@@ -60,6 +63,7 @@ export class SpotifyService {
         'playlist-read-private',
         'playlist-read-collaborative'
     ];
+    private lastRateLimit: number | null = null;
 
     constructor(context: vscode.ExtensionContext) {
         this.context = context;
@@ -84,22 +88,44 @@ export class SpotifyService {
             clientSecret: clientSecret,
             redirectUri: this.redirectUri
         });
-
-        this.loadStoredTokens();
     }
 
-    private loadStoredTokens(): void {
+    public async initialize(): Promise<void> {
+        this.connectionStatus = 'disconnected';
+        console.log('🎵 SpotifyService: Initialized in manual-connect mode');
+    }
+
+    private async loadStoredTokens(): Promise<void> {
+        console.log('🎵 SpotifyService: Loading stored tokens...');
         const accessToken = this.context.globalState.get<string>('spotify_access_token');
         const refreshToken = this.context.globalState.get<string>('spotify_refresh_token');
         const user = this.context.globalState.get<SpotifyUser>('spotify_user');
 
+        console.log('🎵 SpotifyService: Found tokens:', { hasAccess: !!accessToken, hasRefresh: !!refreshToken, hasUser: !!user });
+
         if (accessToken && refreshToken) {
             this.spotifyApi.setAccessToken(accessToken);
             this.spotifyApi.setRefreshToken(refreshToken);
-            this.isAuthenticated = true;
-            this.user = user || null;
             
-            this.validateTokens();
+            // Validate before setting as authenticated
+            console.log('🎵 SpotifyService: Validating tokens...');
+            const isValid = await this.validateTokens();
+            console.log('🎵 SpotifyService: Token validation result:', isValid);
+            
+            if (isValid) {
+                this.isAuthenticated = true;
+                this.connectionStatus = 'connected';
+                this.user = user || null;
+                console.log('🎵 SpotifyService: Successfully authenticated on startup');
+            } else {
+                // If validation fails, clear the stale tokens
+                console.log('🎵 SpotifyService: Token validation failed, clearing tokens');
+                await this.disconnect();
+                this.connectionStatus = 'error';
+            }
+        } else {
+            console.log('🎵 SpotifyService: No stored tokens found');
+            this.connectionStatus = 'disconnected';
         }
     }
 
@@ -138,6 +164,7 @@ export class SpotifyService {
             });
         } catch (error) {
             console.error('Authentication failed:', error);
+            this.connectionStatus = 'error';
             vscode.window.showErrorMessage('Spotify authentication failed. Please check your app configuration.');
             return false;
         }
@@ -152,6 +179,7 @@ export class SpotifyService {
                 const error = parsedUrl.query.error as string;
 
                 if (error) {
+                    this.connectionStatus = 'error';
                     res.writeHead(400, { 'Content-Type': 'text/html' });
                     res.end('<h1>Authentication failed</h1><p>You can close this window.</p>');
                     if (this.server) {
@@ -182,6 +210,7 @@ export class SpotifyService {
                         
                         await this.context.globalState.update('spotify_user', this.user);
                         this.isAuthenticated = true;
+                        this.connectionStatus = 'connected';
 
                         res.writeHead(200, { 'Content-Type': 'text/html' });
                         res.end('<h1>Success!</h1><p>You can close this window and return to VS Code.</p>');
@@ -192,6 +221,7 @@ export class SpotifyService {
                         resolve(true);
                     } catch (error) {
                         console.error('Token exchange failed:', error);
+                        this.connectionStatus = 'error';
                         res.writeHead(500, { 'Content-Type': 'text/html' });
                         res.end('<h1>Authentication failed</h1><p>Please try again.</p>');
                         if (this.server) {
@@ -210,6 +240,7 @@ export class SpotifyService {
 
     async disconnect(): Promise<void> {
         this.isAuthenticated = false;
+        this.connectionStatus = 'disconnected';
         this.user = null;
         this.spotifyApi.resetAccessToken();
         this.spotifyApi.resetRefreshToken();
@@ -278,8 +309,10 @@ export class SpotifyService {
         const limit = 50;
 
         try {
+            console.log('🎵 Fetching liked songs from Spotify API...');
             while (true) {
                 const response = await this.spotifyApi.getMySavedTracks({ limit, offset });
+                console.log(`🎵 Got ${response.body.items.length} liked songs in batch (offset: ${offset})`);
                 
                 const newTracks = response.body.items.map(item => ({
                     id: item.track.id,
@@ -306,6 +339,7 @@ export class SpotifyService {
             console.error('Failed to get liked songs:', error);
         }
 
+        console.log(`🎵 Total liked songs retrieved: ${tracks.length}`);
         return this.removeDuplicateTracks(tracks);
     }
 
@@ -412,6 +446,11 @@ export class SpotifyService {
             return null;
         }
 
+        // Respect recent rate-limit
+        if (this.lastRateLimit && Date.now() - this.lastRateLimit < 30000) {
+            return null;
+        }
+
         try {
             const response = await this.spotifyApi.getMyCurrentPlaybackState();
             
@@ -440,13 +479,25 @@ export class SpotifyService {
                 await this.refreshAccessToken();
                 return this.getCurrentPlaybackState();
             }
-            console.error('Failed to get playback state:', error);
+            if (error.statusCode === 429) {
+                // save timestamp and respect retry-after header if present
+                this.lastRateLimit = Date.now();
+                const retryAfter = parseInt(error.headers?.['retry-after'] || '30', 10);
+                console.warn(`Spotify rate limit hit. Pausing requests for ${retryAfter} seconds.`);
+            } else {
+                console.error('Failed to get playback state:', error);
+            }
             return null;
         }
     }
 
     async playTrack(uri: string): Promise<boolean> {
         if (!this.isAuthenticated) {
+            return false;
+        }
+
+        if (this.lastRateLimit && Date.now() - this.lastRateLimit < 30000) {
+            vscode.window.showWarningMessage('Spotify is rate limiting requests. Please wait a few seconds.');
             return false;
         }
 
@@ -474,6 +525,10 @@ export class SpotifyService {
 
             return true;
         } catch (error: any) {
+            if (error.statusCode === 429) {
+                this.lastRateLimit = Date.now();
+                vscode.window.showWarningMessage('Spotify is rate limiting playback control. Please wait and try again.');
+            }
             console.error('Failed to play track:', error);
             if (error.statusCode === 403) {
                 vscode.window.showWarningMessage('Spotify Premium is required for playback control.');
@@ -583,16 +638,29 @@ export class SpotifyService {
         }
     }
 
-    private async validateTokens(): Promise<void> {
+    private async validateTokens(): Promise<boolean> {
         try {
+            console.log('🎵 SpotifyService: Making getMe() API call for validation...');
+            // A simple way to validate is to make a lightweight API call.
             await this.spotifyApi.getMe();
+            console.log('🎵 SpotifyService: getMe() succeeded, tokens are valid');
+            return true;
         } catch (error: any) {
+            console.log('🎵 SpotifyService: getMe() failed:', error.statusCode, error.message);
             if (error.statusCode === 401) {
-                await this.refreshAccessToken();
-            } else {
-                this.isAuthenticated = false;
-                this.user = null;
+                // Token expired, try to refresh
+                console.log('🎵 SpotifyService: Attempting to refresh token...');
+                try {
+                    await this.refreshAccessToken();
+                    console.log('🎵 SpotifyService: Token refresh succeeded');
+                    return true;
+                } catch (refreshError) {
+                    console.error('🎵 SpotifyService: Failed to refresh token:', refreshError);
+                    return false;
+                }
             }
+            console.error('🎵 SpotifyService: Token validation failed with non-401 error:', error);
+            return false;
         }
     }
 
@@ -609,6 +677,10 @@ export class SpotifyService {
         return this.isAuthenticated;
     }
 
+    getConnectionStatus(): ConnectionStatus {
+        return this.connectionStatus;
+    }
+
     getUser(): SpotifyUser | null {
         return this.user;
     }
@@ -617,5 +689,19 @@ export class SpotifyService {
         if (this.server) {
             this.server.close();
         }
+    }
+
+    async getLibrarySummary(): Promise<{likedTotal:number; recentTotal:number; topTotal:number; playlistTotal:number}> {
+        if (!this.isAuthenticated) throw new Error('Not authenticated');
+        const likedResp = await this.spotifyApi.getMySavedTracks({limit:1});
+        const playlistsResp = await this.spotifyApi.getUserPlaylists({limit:1});
+        const recentResp = await this.spotifyApi.getMyRecentlyPlayedTracks({limit:50});
+        const topResp = await this.spotifyApi.getMyTopTracks({limit:50});
+        return {
+            likedTotal: likedResp.body.total,
+            recentTotal: recentResp.body.items.length,
+            topTotal: topResp.body.items.length,
+            playlistTotal: playlistsResp.body.total
+        };
     }
 } 

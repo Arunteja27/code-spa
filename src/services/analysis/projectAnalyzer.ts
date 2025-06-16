@@ -10,6 +10,9 @@ export interface ProjectAnalysis {
     directoryCount: number;
     complexity: 'simple' | 'moderate' | 'complex';
     suggestedTheme: string;
+    languages: { [key: string]: number };
+    readmeContent: string;
+    totalFiles: number;
 }
 
 export class ProjectAnalyzer {
@@ -26,7 +29,7 @@ export class ProjectAnalyzer {
         'PHP': ['.php'],
         'Ruby': ['.rb'],
         'Swift': ['.swift'],
-        'Kotlin': ['.kt'],
+        'Kotlin': ['.kt', '.kts'],
         'Dart': ['.dart'],
         'HTML': ['.html', '.htm'],
         'CSS': ['.css', '.scss', '.sass', '.less'],
@@ -36,7 +39,10 @@ export class ProjectAnalyzer {
         'Markdown': ['.md', '.markdown'],
         'Shell': ['.sh', '.bash', '.zsh'],
         'PowerShell': ['.ps1'],
-        'SQL': ['.sql']
+        'SQL': ['.sql'],
+        'R': ['.r', '.R'],
+        'MATLAB': ['.m'],
+        'Jupyter': ['.ipynb']
     };
 
     private readonly frameworkIndicators: { [key: string]: string[] } = {
@@ -63,8 +69,73 @@ export class ProjectAnalyzer {
         'Unity': ['Assets/', '*.unity'],
         'Unreal': ['*.uproject', 'Source/'],
         'Docker': ['Dockerfile', 'docker-compose.yml'],
-        'Kubernetes': ['*.yaml:kind:', '*.yml:kind:']
+        'Kubernetes': ['*.yaml:kind:', '*.yml:kind:'],
+        'Vite': ['package.json:vite', 'vite.config.js'],
+        'Webpack': ['package.json:webpack', 'webpack.config.js'],
+        'Tailwind CSS': ['package.json:tailwindcss', 'tailwind.config.js'],
+        'Bootstrap': ['package.json:bootstrap'],
+        'Jest': ['package.json:jest', 'jest.config.js'],
+        'Cypress': ['package.json:cypress', 'cypress.json'],
+        'Streamlit': ['requirements.txt:streamlit'],
+        'Gatsby': ['package.json:gatsby', 'gatsby-config.js'],
+        'Remix': ['package.json:remix', 'remix.config.js']
     };
+
+    async analyzeCurrentProject(): Promise<ProjectAnalysis> {
+        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+        if (!workspaceFolder) {
+            throw new Error('No workspace folder found');
+        }
+
+        const rootPath = workspaceFolder.uri.fsPath;
+        console.log('🔍 Analyzing project at:', rootPath);
+
+        const analysis = await this.analyzeWorkspace(rootPath);
+        if (!analysis) {
+            throw new Error('Failed to analyze project');
+        }
+
+        await this.enhanceForLLM(rootPath, analysis);
+
+        console.log('📊 Project analysis complete:', analysis);
+        return analysis;
+    }
+
+    private async enhanceForLLM(rootPath: string, analysis: ProjectAnalysis): Promise<void> {
+        await this.readReadmeContent(rootPath, analysis);
+        
+        const languageStats = await this.analyzeLanguages(rootPath);
+        const totalFiles = Object.values(languageStats).reduce((sum, count) => sum + count, 0);
+        
+        analysis.languages = {};
+        for (const [language, count] of Object.entries(languageStats)) {
+            analysis.languages[language] = Math.round((count / totalFiles) * 100);
+        }
+        
+        analysis.totalFiles = totalFiles;
+    }
+
+    private async readReadmeContent(rootPath: string, analysis: ProjectAnalysis): Promise<void> {
+        const readmeFiles = ['README.md', 'readme.md', 'README.txt', 'readme.txt', 'README'];
+        
+        for (const readmeFile of readmeFiles) {
+            const readmePath = path.join(rootPath, readmeFile);
+            if (await this.fileExists(readmePath)) {
+                try {
+                    const content = await fs.promises.readFile(readmePath, 'utf8');
+                    const lines = content.split('\n');
+                    analysis.readmeContent = lines.slice(0, 15).join('\n').trim();
+                    break;
+                } catch (error) {
+                    console.error('Error reading README:', error);
+                }
+            }
+        }
+        
+        if (!analysis.readmeContent) {
+            analysis.readmeContent = '';
+        }
+    }
 
     async analyzeWorkspace(workspacePath: string): Promise<ProjectAnalysis | null> {
         try {
@@ -75,7 +146,10 @@ export class ProjectAnalyzer {
                 fileCount: 0,
                 directoryCount: 0,
                 complexity: 'simple',
-                suggestedTheme: 'cyberpunk'
+                suggestedTheme: 'cyberpunk',
+                languages: {},
+                readmeContent: '',
+                totalFiles: 0
             };
 
             const stats = await this.gatherProjectStats(workspacePath);

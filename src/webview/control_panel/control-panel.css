@@ -31,7 +31,6 @@ body::-webkit-scrollbar-thumb {
     min-width: 280px;
 }
 
-/* Navigation */
 .nav-header {
     display: flex;
     align-items: center;
@@ -60,7 +59,7 @@ body::-webkit-scrollbar-thumb {
 }
 
 .nav-title-button:hover {
-    color: #1ed760; /* Spotify Green */
+    color: #1ed760;
 }
 
 .nav-back {
@@ -163,6 +162,10 @@ body::-webkit-scrollbar-thumb {
     font-size: 16px;
     width: 20px;
     text-align: center;
+}
+
+.github-button {
+    margin-top: 15px;
 }
 
 /* Notification toggle buttons */
