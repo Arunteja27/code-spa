@@ -1061,7 +1061,6 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                 <div class="logo">🎨</div>
                 <h1>Code Spa Control Panel</h1>
                 <p class="tagline">Customize your coding experience</p>
-                <div class="status-indicator"></div>
             </div>
 
             <div class="controls-section">
