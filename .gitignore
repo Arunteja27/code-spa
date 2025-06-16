@@ -39,4 +39,7 @@ coverage/
 
 # Temporary folders
 tmp/
-temp/ 
+temp/
+
+# VS Code test directory
+.vscode-test/ 

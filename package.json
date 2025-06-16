@@ -27,7 +27,7 @@
   "activationEvents": [
     "onStartupFinished"
   ],
-  "main": "./out/extension.js",
+  "main": "./out/core/extension.js",
   "contributes": {
     "commands": [
       {
@@ -69,6 +69,11 @@
         "command": "code-spa.disconnectSpotify",
         "title": "Disconnect from Spotify",
         "category": "Code Spa"
+      },
+      {
+        "command": "code-spa.generateLLMTheme",
+        "title": "Generate AI Theme",
+        "category": "Code Spa"
       }
     ],
     "configuration": {
@@ -108,6 +113,11 @@
           "default": "",
           "description": "OpenAI API key for AI features (optional)"
         },
+        "codeSpa.geminiApiKey": {
+          "type": "string",
+          "default": "",
+          "description": "Google Gemini API key for LLM theme generation (free tier available)"
+        },
         "codeSpa.theme.preset": {
           "type": "string",
           "enum": [
@@ -130,6 +140,46 @@
           "type": "string",
           "default": "",
           "description": "Spotify App Client Secret (keep this private!)"
+        },
+        "codeSpa.notifications.extensionActivation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notifications for extension activation and status"
+        },
+        "codeSpa.notifications.backgroundChanges": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notifications when background changes"
+        },
+        "codeSpa.notifications.themeChanges": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notifications when themes are applied"
+        },
+        "codeSpa.notifications.spotifyConnection": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notifications for Spotify connection status"
+        },
+        "codeSpa.notifications.musicPlayback": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notifications for music playback (play/pause/skip)"
+        },
+        "codeSpa.notifications.projectAnalysis": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show notifications for project analysis results"
+        },
+        "codeSpa.notifications.errors": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show error notifications"
+        },
+        "codeSpa.notifications.warnings": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show warning notifications"
         }
       }
     },
@@ -162,10 +212,10 @@
       ]
     },
     "views": {
-      "explorer": [
+      "codeSpaPanel": [
         {
           "id": "codeSpaControlPanel",
-          "name": "Code Spa",
+          "name": "Control Panel",
           "type": "webview",
           "when": "true"
         }
@@ -176,20 +226,22 @@
         {
           "id": "codeSpaPanel",
           "title": "Code Spa",
-          "icon": "$(paintbrush)"
+          "icon": "media/paintbrush.svg"
         }
       ]
     }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
-    "compile": "tsc -p ./",
+    "compile": "tsc -p ./ && npm run copy-webview",
+    "copy-webview": "node scripts/copy-webview.js",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
     "test": "vscode-test"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@types/dotenv": "^8.2.3",
     "@types/spotify-web-api-node": "^5.0.11",
     "axios": "^1.6.2",

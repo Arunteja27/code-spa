@@ -2,33 +2,39 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
-import { BackgroundController } from './backgroundController';
-import { MusicPlayer } from './musicPlayer';
-import { ProjectAnalyzer } from './projectAnalyzer';
-import { UICustomizer } from './uiCustomizer';
-import { ControlPanelProvider } from './controlPanelProvider';
+import { BackgroundController } from '../services/theming/backgroundController';
+import { MusicPlayer } from '../services/music/musicPlayer';
+import { ProjectAnalyzer } from '../services/analysis/projectAnalyzer';
+import { UICustomizer } from '../services/theming/uiCustomizer';
+import { ControlPanelProvider } from '../providers/controlPanelProvider';
+import { NotificationService } from '../services/notifications/notificationService';
+import { LLMThemeGenerator } from '../services/llm/llmThemeGenerator';
 
 let backgroundController: BackgroundController;
 let musicPlayer: MusicPlayer;
 let projectAnalyzer: ProjectAnalyzer;
 let uiCustomizer: UICustomizer;
 let controlPanelProvider: ControlPanelProvider;
+let notificationService: NotificationService;
+let llmThemeGenerator: LLMThemeGenerator;
 
-// save originals for notification patching
 const originalInfo = vscode.window.showInformationMessage;
 const originalWarn = vscode.window.showWarningMessage;
 const originalError = vscode.window.showErrorMessage;
 
-export function activate(context: vscode.ExtensionContext) {
+export async function activate(context: vscode.ExtensionContext) {
 	console.log('🎨 Code Spa is now active! Welcome to your coding sanctuary.');
 	
 	dotenv.config({ path: path.join(context.extensionPath, '.env') });
 	
-	backgroundController = new BackgroundController(context);
-	musicPlayer = new MusicPlayer(context);
+	notificationService = NotificationService.getInstance();
+
+	backgroundController = await BackgroundController.create(context);
+	musicPlayer = await MusicPlayer.create(context);
 	projectAnalyzer = new ProjectAnalyzer();
 	uiCustomizer = new UICustomizer(context);
 	controlPanelProvider = new ControlPanelProvider(context);
+	llmThemeGenerator = new LLMThemeGenerator();
 	
 	controlPanelProvider.setUICustomizer(uiCustomizer);
 	controlPanelProvider.setMusicPlayer(musicPlayer);
@@ -45,7 +51,7 @@ export function activate(context: vscode.ExtensionContext) {
 	initializeExtension();
 	setupWorkspaceMonitoring(context);
 
-	vscode.window.showInformationMessage('🎨 Code Spa activated! Open the Control Panel to customize your coding experience.');
+	notificationService.showExtensionActivation('🎨 Code Spa activated! Open the Control Panel to customize your coding experience.');
 }
 
 function registerCommands(context: vscode.ExtensionContext) {
@@ -60,30 +66,31 @@ function registerCommands(context: vscode.ExtensionContext) {
 		
 		if (!enabled) {
 			await backgroundController.enable();
-			vscode.window.showInformationMessage('🖼️ Dynamic backgrounds enabled!');
+			notificationService.showBackgroundChange('🖼️ Dynamic backgrounds enabled!');
 		} else {
 			await backgroundController.disable();
-			vscode.window.showInformationMessage('🖼️ Dynamic backgrounds disabled.');
+			notificationService.showBackgroundChange('🖼️ Dynamic backgrounds disabled.');
 		}
 	});
 
 	const openMusicPlayer = vscode.commands.registerCommand('code-spa.openMusicPlayer', () => {
-		musicPlayer.showPlayer();
+		controlPanelProvider.show();
+		vscode.commands.executeCommand('workbench.view.extension.codeSpaPanel');
 	});
 
 	const analyzeProject = vscode.commands.registerCommand('code-spa.analyzeProject', async () => {
 		const workspaceFolders = vscode.workspace.workspaceFolders;
 		if (!workspaceFolders) {
-			vscode.window.showWarningMessage('No workspace folder found to analyze.');
+			notificationService.showWarning('No workspace folder found to analyze.');
 			return;
 		}
 
-		vscode.window.showInformationMessage('🔍 Analyzing project context...');
+		notificationService.showProjectAnalysis('🔍 Analyzing project context...');
 		const analysis = await projectAnalyzer.analyzeWorkspace(workspaceFolders[0].uri.fsPath);
 		
 		if (analysis) {
 			await backgroundController.updateBackgroundFromContext(analysis);
-			vscode.window.showInformationMessage(`🎨 Background updated based on ${analysis.projectType} project!`);
+			notificationService.showBackgroundChange(`🎨 Background updated based on ${analysis.projectType} project!`);
 		}
 	});
 
@@ -102,15 +109,39 @@ function registerCommands(context: vscode.ExtensionContext) {
 	});
 
 	const connectSpotify = vscode.commands.registerCommand('code-spa.connectSpotify', async () => {
-		vscode.window.showInformationMessage('🎵 Connecting to Spotify...');
+		notificationService.showSpotifyConnection('🎵 Connecting to Spotify...');
 		const success = await musicPlayer.connectSpotify();
 		if (success) {
-			vscode.window.showInformationMessage('🎵 Successfully connected to Spotify! Your playlists are now available.');
+			notificationService.showSpotifyConnection('🎵 Successfully connected to Spotify! Your playlists are now available.');
 		}
 	});
 
 	const disconnectSpotify = vscode.commands.registerCommand('code-spa.disconnectSpotify', async () => {
 		await musicPlayer.disconnectSpotify();
+	});
+
+	const generateLLMTheme = vscode.commands.registerCommand('code-spa.generateLLMTheme', async () => {
+		const result = await llmThemeGenerator.generateThemeForCurrentProject();
+		
+		if (result.success && result.theme) {
+			const action = await vscode.window.showInformationMessage(
+				`🎨 Generated "${result.theme.name}" theme! ${result.theme.description}`,
+				'Apply Theme',
+				'View Details'
+			);
+
+			if (action === 'Apply Theme') {
+				await uiCustomizer.applyPreset('cyberpunk');
+				notificationService.showThemeChange(`🎨 Applied AI-generated theme "${result.theme.name}"!`);
+			} else if (action === 'View Details') {
+				vscode.window.showInformationMessage(
+					`Theme: ${result.theme.name}\n\nColors:\n• Primary: ${result.theme.colors.primary}\n• Secondary: ${result.theme.colors.secondary}\n• Accent: ${result.theme.colors.accent}\n\nReasoning: ${result.theme.reasoning}`,
+					{ modal: true }
+				);
+			}
+		} else {
+			vscode.window.showErrorMessage(`Failed to generate theme: ${result.error || 'Unknown error'}`);
+		}
 	});
 
 	context.subscriptions.push(
@@ -121,21 +152,14 @@ function registerCommands(context: vscode.ExtensionContext) {
 		customizeTheme,
 		testTheme,
 		connectSpotify,
-		disconnectSpotify
+		disconnectSpotify,
+		generateLLMTheme
 	);
 }
 
 function initializeExtension() {
 	const config = vscode.workspace.getConfiguration('codeSpa');
 	
-	if (config.get('background.enabled', true)) {
-		backgroundController.enable();
-	}
-
-	if (config.get('music.enabled', false)) {
-		musicPlayer.initialize();
-	}
-
 	const themePreset = config.get('theme.preset', 'cyberpunk');
 	uiCustomizer.applyPreset(themePreset as string);
 
@@ -182,11 +206,6 @@ async function handleConfigurationChange() {
 		await backgroundController.updateOpacity(config.get('background.opacity', 0.15));
 	} else {
 		await backgroundController.disable();
-	}
-
-	if (config.get('music.enabled', false)) {
-		musicPlayer.initialize();
-		musicPlayer.setVolume(config.get('music.volume', 0.3));
 	}
 
 	const themePreset = config.get('theme.preset', 'cyberpunk');
