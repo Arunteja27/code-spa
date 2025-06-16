@@ -30,6 +30,7 @@ export class MusicPlayer {
     private syncInterval: NodeJS.Timeout | null = null;
     private currentSpotifyVolume: number = 50;
     private lastVolumeUpdate: number = 0;
+    private lastKnownProgress: number = 0;
     private currentView: 'library' | 'category' | 'playlists' | 'playlist-songs' = 'library';
     private currentCategory: 'liked-songs' | 'recently-played' | 'top-tracks' | 'playlists' | null = null;
     private likedSongs: SpotifyTrack[] = [];
@@ -197,7 +198,18 @@ export class MusicPlayer {
                     if (playback.body && playback.body.item) {
                         const duration = playback.body.item.duration_ms;
                         const progress = playback.body.progress_ms;
-                        if (!newPlayingState && progress >= duration - 2000) {
+                        
+                        // Check if user skipped forward significantly (more than 5 seconds difference)
+                        const progressDiff = Math.abs(progress - this.lastKnownProgress);
+                        if (progressDiff > 5000 && this.isPlaying && this.currentTrack) {
+                            // User likely skipped, reschedule auto-next with new progress
+                            this.scheduleAutoNext(this.currentTrack.duration, progress);
+                        }
+                        this.lastKnownProgress = progress;
+                        
+                        // Only auto-advance if the song naturally ended (was playing and reached the end)
+                        // Don't auto-advance if user manually paused the song
+                        if (!newPlayingState && progress >= duration - 2000 && this.isPlaying) {
                             await this.nextTrack();
                         }
                     }
@@ -414,8 +426,12 @@ export class MusicPlayer {
         if (this.playbackPlaylist && this.playbackTrackIndex < this.playbackPlaylist.tracks.length - 1) {
             this.playbackTrackIndex++;
             this.currentTrack = this.playbackPlaylist.tracks[this.playbackTrackIndex] as SpotifyTrack;
-            await this.spotifyService.playTrack(this.currentTrack.uri);
-            this.isPlaying = true;
+            const success = await this.spotifyService.playTrack(this.currentTrack.uri);
+            if (success) {
+                this.isPlaying = true;
+                this.lastKnownProgress = 0;
+                this.scheduleAutoNext(this.currentTrack.duration, 0);
+            }
             this.updateWebview();
         } else {
             await this.spotifyService.skipToNext();
@@ -468,6 +484,7 @@ export class MusicPlayer {
             const success = await this.spotifyService.playTrack(this.currentTrack.uri);
             if (success) {
                 this.isPlaying = true;
+                this.lastKnownProgress = 0;
                 this.scheduleAutoNext(this.currentTrack.duration, 0);
                 
                 setTimeout(() => {
@@ -712,6 +729,7 @@ export class MusicPlayer {
                         this.currentTrackIndex = index;
                         this.playbackTrackIndex = index;
                         this.isPlaying = true;
+                        this.lastKnownProgress = 0;
                         
                         // Set up playback context for next/previous functionality
                         if (this.currentView === 'category') {
