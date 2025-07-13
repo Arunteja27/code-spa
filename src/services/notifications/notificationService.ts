@@ -11,6 +11,19 @@ export interface NotificationConfig {
     warnings: boolean;
 }
 
+export const NOTIFICATION_CATEGORIES = [
+    'extensionActivation',
+    'backgroundChanges',
+    'themeChanges',
+    'projectAnalysis',
+    'spotifyConnection',
+    'musicPlayback',
+    'warnings',
+    'errors'
+] as const;
+
+export type NotificationCategory = typeof NOTIFICATION_CATEGORIES[number];
+
 export class NotificationService {
     private static instance: NotificationService;
     private config: NotificationConfig;
@@ -158,17 +171,13 @@ export class NotificationService {
         const currentConfig = this.getConfig();
         const allEnabled = Object.values(currentConfig).every(value => value);
         const newValue = !allEnabled;
-        
-        await this.updateConfig({
-            extensionActivation: newValue,
-            backgroundChanges: newValue,
-            themeChanges: newValue,
-            spotifyConnection: newValue,
-            musicPlayback: newValue,
-            projectAnalysis: newValue,
-            errors: newValue,
-            warnings: newValue
-        });
+
+        const updates: Partial<NotificationConfig> = {};
+        for (const category of NOTIFICATION_CATEGORIES) {
+            (updates as any)[category] = newValue;
+        }
+
+        await this.updateConfig(updates);
         
         return newValue;
     }

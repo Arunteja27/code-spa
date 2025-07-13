@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { UICustomizer } from '../services/theming/uiCustomizer';
 import { MusicPlayer } from '../services/music/musicPlayer';
 import { SpotifyTrack, SpotifyPlaylist } from '../services/spotify/spotifyService';
-import { NotificationService } from '../services/notifications/notificationService';
+import { NotificationService, NOTIFICATION_CATEGORIES } from '../services/notifications/notificationService';
 import { WebviewUtils } from '../webview/WebviewUtils';
 import { LLMThemeGenerator } from '../services/llm/llmThemeGenerator';
 import { GeneratedTheme } from '../services/llm/geminiService';
@@ -1216,12 +1216,7 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
     }
 
     private _areAllNotificationsEnabled(config: any): boolean {
-        const categories = [
-            'extensionActivation', 'backgroundChanges', 'themeChanges',
-            'projectAnalysis', 'spotifyConnection', 'musicPlayback',
-            'warnings', 'errors'
-        ];
-        return categories.every(category => config[category] !== false);
+        return NOTIFICATION_CATEGORIES.every(category => config[category] !== false);
     }
 
     private async _handleLLMThemeGeneration(): Promise<void> {
