@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { UICustomizer } from '../services/theming/uiCustomizer';
 import { MusicPlayer } from '../services/music/musicPlayer';
-import { SpotifyTrack, SpotifyPlaylist } from '../services/spotify/spotifyService';
+
 import { NotificationService } from '../services/notifications/notificationService';
 import { WebviewUtils } from '../webview/WebviewUtils';
 import { LLMThemeGenerator } from '../services/llm/llmThemeGenerator';
@@ -17,18 +17,12 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
     private llmThemeGenerator: LLMThemeGenerator;
     private latestGeneratedTheme: GeneratedTheme | null = null;
     
-    private currentPlaybackContext: { tracks: any[]; currentIndex: number; category?: string; playlistId?: string } | null = null;
     private webviewUtils: WebviewUtils;
     private spotifyView: 'library' | 'category' | 'playlists' | 'playlist-songs' = 'library';
     private currentCategory: string | null = null;
     private currentPlaylist: any | null = null;
 
     private currentTrackInfo: { name: string; artist: string; imageUrl: string | null; isPlaying: boolean } | null = null;
-
-    private _panel: vscode.WebviewPanel | undefined;
-    private _disposables: vscode.Disposable[] = [];
-    private _currentView: 'home' | 'themes' | 'music' | 'notifications' = 'home';
-    private _isVSCodeClosed = false;
 
     constructor(private readonly _extensionContext: vscode.ExtensionContext) {
         this.notificationService = NotificationService.getInstance();
@@ -46,7 +40,7 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
 
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
-        context: vscode.WebviewViewResolveContext,
+        _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken,
     ) {
         this._view = webviewView;
@@ -215,7 +209,7 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                 if (this.musicPlayer) {
                     const spotifyService = this.musicPlayer.getSpotifyService();
                     if (spotifyService.getIsAuthenticated()) {
-                        const playlists = await spotifyService.getUserPlaylists();
+                        await spotifyService.getUserPlaylists();
                         this._updateWebview();
                     }
                 }
@@ -332,20 +326,6 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    private async _getPlaylistsFromCache(): Promise<SpotifyPlaylist[]> {
-        if (!this.musicPlayer) return [];
-        
-        const spotifyService = this.musicPlayer.getSpotifyService();
-        if (!spotifyService.getIsAuthenticated()) return [];
-
-        try {
-            const allContent = await spotifyService.getUserPlaylists();
-            return allContent.filter(p => !['liked-songs', 'recently-played', 'top-tracks'].includes(p.id));
-        } catch (error) {
-            console.error('Failed to get playlists:', error);
-            return [];
-        }
-    }
 
     private _getHtmlForWebview(webview: vscode.Webview) {
         try {
@@ -376,11 +356,7 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
         
         // Check if music player and Spotify are available
         const musicPlayerReady = !!this.musicPlayer;
-        const connectionStatus = musicPlayerReady && this.musicPlayer ? this.musicPlayer.getSpotifyService().getConnectionStatus() : 'disconnected';
         const isSpotifyConnected = musicPlayerReady && this.musicPlayer ? this.musicPlayer.getSpotifyService().getIsAuthenticated() : false;
-        const user = musicPlayerReady && this.musicPlayer ? this.musicPlayer.getSpotifyService().getUser() : null;
-        const currentTrack = musicPlayerReady && this.musicPlayer ? this.musicPlayer.getCurrentTrack() : null;
-        const isPlaying = musicPlayerReady && this.musicPlayer ? this.musicPlayer.getIsPlaying() : false;
 
         // Dynamic nav title based on current page
         const navTitleText = this.currentPage === 'home' ? '🎨 Code Spa'
@@ -410,10 +386,10 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
                 pageContent = this._getThemesPageContent();
                 break;
             case 'music':
-                pageContent = this._getMusicPageContent(musicPlayerReady, connectionStatus, isSpotifyConnected, user, currentTrack, isPlaying);
+                pageContent = this._getMusicPageContent(isSpotifyConnected);
                 break;
             case 'settings':
-                pageContent = this._getSettingsPageContent(config);
+                pageContent = this._getSettingsPageContent();
                 break;
             case 'notifications':
                 pageContent = this._getNotificationsPageContent(config);
@@ -522,7 +498,7 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
         `;
     }
 
-    private _getMusicPageContent(musicPlayerReady: boolean, connectionStatus: string, isSpotifyConnected: boolean, user: any, currentTrack: SpotifyTrack | null, isPlaying: boolean): string {
+    private _getMusicPageContent(isSpotifyConnected: boolean): string {
         if (!isSpotifyConnected) {
             return `
                 <div class="controls-section">
@@ -548,8 +524,6 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
     private _getFullMusicPlayerContent(): string {
         if (!this.musicPlayer) return '<p>Music player not available</p>';
         
-        const spotifyService = this.musicPlayer.getSpotifyService();
-        const user = spotifyService.getUser();
         const currentTrack = this.musicPlayer.getCurrentTrack();
         const isPlaying = this.musicPlayer.getIsPlaying();
 
@@ -978,7 +952,7 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
         `;
     }
 
-    private _getSettingsPageContent(config: any): string {
+    private _getSettingsPageContent(): string {
         return `
             <div class="controls-section">
                 <div class="settings-grid">
@@ -1143,25 +1117,6 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
         }
     }
 
-    private async _nextTrack(): Promise<void> {
-        if (!this.musicPlayer) return;
-
-        const spotifyService = this.musicPlayer.getSpotifyService();
-        if (!spotifyService.getIsAuthenticated()) return;
-
-        await spotifyService.skipToNext();
-        setTimeout(() => this._updateWebview(), 500);
-    }
-
-    private async _previousTrack(): Promise<void> {
-        if (!this.musicPlayer) return;
-
-        const spotifyService = this.musicPlayer.getSpotifyService();
-        if (!spotifyService.getIsAuthenticated()) return;
-
-        await spotifyService.skipToPrevious();
-        setTimeout(() => this._updateWebview(), 500);
-    }
 
     private async _sendPlaybackStateUpdate(): Promise<void> {
         if (!this.musicPlayer) return;
