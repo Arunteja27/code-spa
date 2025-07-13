@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { SpotifyService, SpotifyPlaylist, SpotifyTrack, SpotifyUser } from '../spotify/spotifyService';
+import { SpotifyService, SpotifyPlaylist, SpotifyTrack } from '../spotify/spotifyService';
 import { WebviewUtils } from '../../webview/WebviewUtils';
 
 interface Track {
@@ -26,10 +26,8 @@ export class MusicPlayer {
     private spotifyPlaylists: SpotifyPlaylist[] = [];
     private fallbackPlaylists: Map<string, Playlist> = new Map();
     private webviewPanel: vscode.WebviewPanel | null = null;
-    private currentTrackIndex: number = 0;
     private syncInterval: NodeJS.Timeout | null = null;
     private currentSpotifyVolume: number = 50;
-    private lastVolumeUpdate: number = 0;
     private lastKnownProgress: number = 0;
     private currentView: 'library' | 'category' | 'playlists' | 'playlist-songs' = 'library';
     private currentCategory: 'liked-songs' | 'recently-played' | 'top-tracks' | 'playlists' | null = null;
@@ -146,7 +144,6 @@ export class MusicPlayer {
                 this.currentView = 'library';
                 this.currentCategory = null;
                 this.currentPlaylist = null;
-                this.currentTrackIndex = 0;
                 
                 this.startVolumeSync();
                 this.updateWebview();
@@ -173,7 +170,6 @@ export class MusicPlayer {
         this.currentTrack = null;
         this.currentView = 'library';
         this.currentCategory = null;
-        this.currentTrackIndex = 0;
         this.isPlaying = false;
         
         this.playbackPlaylist = null;
@@ -218,7 +214,6 @@ export class MusicPlayer {
                 if (newVolume !== this.currentSpotifyVolume || newPlayingState !== this.isPlaying) {
                     this.currentSpotifyVolume = newVolume;
                     this.isPlaying = newPlayingState;
-                    this.lastVolumeUpdate = Date.now();
                     this.updateWebview();
                 }
             }
@@ -313,33 +308,6 @@ export class MusicPlayer {
         `;
     }
 
-    private getTracksListHTML(): string {
-        if (!this.currentPlaylist) return '';
-
-        const tracks = 'tracks' in this.currentPlaylist ? this.currentPlaylist.tracks : [];
-        
-        return tracks.map((track, index) => {
-            const isSpotifyTrack = 'uri' in track;
-            const duration = isSpotifyTrack ? 
-                this.formatDuration((track as SpotifyTrack).duration) : 
-                this.formatDuration((track as Track).duration ? (track as Track).duration! * 1000 : 0);
-            
-            return `
-                <div class="track-item ${index === this.currentTrackIndex ? 'active' : ''}" 
-                     onclick="playTrack(${index})">
-                    <div class="track-image">
-                        ${isSpotifyTrack ? `<img src="${(track as SpotifyTrack).imageUrl}" alt="Album Art">` : '🎵'}
-                    </div>
-                    <div class="track-info">
-                        <div class="track-name">${isSpotifyTrack ? (track as SpotifyTrack).name : (track as Track).title}</div>
-                        <div class="track-artist">${isSpotifyTrack ? (track as SpotifyTrack).artist : 'Demo Track'}</div>
-                    </div>
-                    <div class="track-duration">${duration}</div>
-                </div>
-            `;
-        }).join('');
-    }
-
     private formatDuration(ms: number): string {
         const minutes = Math.floor(ms / 60000);
         const seconds = Math.floor((ms % 60000) / 1000);
@@ -349,41 +317,6 @@ export class MusicPlayer {
     private updateWebview(): void {
         if (this.webviewPanel) {
             this.webviewPanel.webview.html = this.getMusicPlayerHTML();
-        }
-    }
-
-    private async handleWebviewMessage(message: any): Promise<void> {
-        switch (message.type) {
-            case 'connectSpotify':
-                await this.connectSpotify();
-                break;
-            case 'disconnectSpotify':
-                await this.disconnectSpotify();
-                break;
-            case 'togglePlayback':
-                await this.togglePlayback();
-                break;
-            case 'nextTrack':
-                await this.nextTrack();
-                break;
-            case 'previousTrack':
-                await this.previousTrack();
-                break;
-            case 'setVolume':
-                this.setVolume(message.volume);
-                break;
-            case 'selectPlaylist':
-                await this.selectPlaylist(message.playlistId);
-                break;
-            case 'playTrack':
-                await this.playTrack(message.trackIndex);
-                break;
-            case 'selectCategory':
-                this.selectCategory(message.category);
-                break;
-            case 'goBack':
-                this.goBack();
-                break;
         }
     }
 
@@ -459,66 +392,6 @@ export class MusicPlayer {
         this.context.globalState.update('musicVolume', this.volume);
     }
 
-    private async selectPlaylist(playlistId: string): Promise<void> {
-        const playlist = this.spotifyPlaylists.find(p => p.id === playlistId);
-        if (playlist) {
-            this.currentPlaylist = playlist;
-            this.currentTrackIndex = 0;
-            this.currentView = 'playlist-songs';
-            this.updateWebview();
-        }
-    }
-
-    private async playTrack(trackIndex: number): Promise<void> {
-        if (!this.currentPlaylist || !this.spotifyService.getIsAuthenticated()) {
-            return;
-        }
-
-        if (trackIndex >= 0 && trackIndex < this.currentPlaylist.tracks.length) {
-            this.currentTrackIndex = trackIndex;
-            this.currentTrack = this.currentPlaylist.tracks[trackIndex] as SpotifyTrack;
-            
-            this.playbackPlaylist = this.currentPlaylist;
-            this.playbackTrackIndex = trackIndex;
-            
-            const success = await this.spotifyService.playTrack(this.currentTrack.uri);
-            if (success) {
-                this.isPlaying = true;
-                this.lastKnownProgress = 0;
-                this.scheduleAutoNext(this.currentTrack.duration, 0);
-                
-                setTimeout(() => {
-                    this.updateWebview();
-                }, 100);
-            } else {
-                this.updateWebview();
-            }
-        }
-    }
-
-    private selectCategory(category: string): void {
-        this.currentCategory = category as any;
-        const loadAndShow = async () => {
-            if (this.likedSongs.length === 0 && this.spotifyPlaylists.length === 0) {
-                await this.loadSpotifyPlaylists();
-            }
-            this.currentView = category === 'playlists' ? 'playlists' : 'category';
-            this.updateWebview();
-        };
-        loadAndShow();
-    }
-
-    private goBack(): void {
-        if (this.currentView === 'playlist-songs') {
-            this.currentView = 'playlists';
-            this.currentPlaylist = null;
-        } else if (this.currentView === 'category' || this.currentView === 'playlists') {
-            this.currentView = 'library';
-            this.currentCategory = null;
-            this.currentPlaylist = null;
-        }
-        this.updateWebview();
-    }
 
     private getCategoryTitle(category: string): string {
         switch (category) {
@@ -616,7 +489,7 @@ export class MusicPlayer {
             <div class="tracks-container">
                 ${tracksHTML}
             </div>
-            ${this.getPlaybackControlsHTML(this.spotifyService.getUser())}
+            ${this.getPlaybackControlsHTML()}
         `;
     }
 
@@ -670,11 +543,11 @@ export class MusicPlayer {
             <div class="tracks-container">
                 ${tracksHTML}
             </div>
-            ${this.getPlaybackControlsHTML(this.spotifyService.getUser())}
+            ${this.getPlaybackControlsHTML()}
         `;
     }
 
-    private getPlaybackControlsHTML(user: SpotifyUser | null): string {
+    private getPlaybackControlsHTML(): string {
         const currentTrack = this.currentTrack;
         const trackName = currentTrack ? currentTrack.name : 'No track selected';
         const artistName = currentTrack ? currentTrack.artist : 'Select a song to start';
@@ -726,7 +599,6 @@ export class MusicPlayer {
                     const success = await this.spotifyService.playTrack(track.uri);
                     if (success) {
                         this.currentTrack = track;
-                        this.currentTrackIndex = index;
                         this.playbackTrackIndex = index;
                         this.isPlaying = true;
                         this.lastKnownProgress = 0;

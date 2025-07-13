@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
 import { BackgroundController } from '../services/theming/backgroundController';
@@ -29,7 +28,7 @@ export async function activate(context: vscode.ExtensionContext) {
 	
 	notificationService = NotificationService.getInstance();
 
-	backgroundController = await BackgroundController.create(context);
+        backgroundController = await BackgroundController.create();
 	musicPlayer = await MusicPlayer.create(context);
 	projectAnalyzer = new ProjectAnalyzer();
 	uiCustomizer = new UICustomizer(context);
@@ -170,13 +169,13 @@ function setupWorkspaceMonitoring(context: vscode.ExtensionContext) {
 	const workspaceWatcher = vscode.workspace.onDidChangeWorkspaceFolders(async () => {
 		const config = vscode.workspace.getConfiguration('codeSpa');
 		if (config.get('background.enabled', true)) {
-			setTimeout(async () => {
-				const command = vscode.commands.getCommands().then(commands => {
-					if (commands.includes('code-spa.analyzeProject')) {
-						vscode.commands.executeCommand('code-spa.analyzeProject');
-					}
-				});
-			}, 2000);
+            setTimeout(() => {
+                vscode.commands.getCommands().then(commands => {
+                    if (commands.includes('code-spa.analyzeProject')) {
+                        vscode.commands.executeCommand('code-spa.analyzeProject');
+                    }
+                });
+            }, 2000);
 		}
 	});
 

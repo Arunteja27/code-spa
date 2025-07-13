@@ -26,7 +26,7 @@ https://github.com/user-attachments/assets/fe23cb62-6710-472e-96d2-cb6c6824b313
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file for details
+All Rights Reserved
 
 ---
 
