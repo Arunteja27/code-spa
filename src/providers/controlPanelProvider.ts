@@ -1097,8 +1097,10 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
         const categories = [
             { key: 'extensionActivation', label: 'Extension Activation', icon: '🎨' },
             { key: 'backgroundChanges', label: 'Background Changes', icon: '🖼️' },
+            { key: 'themeChanges', label: 'Theme Changes', icon: '🎨' },
             { key: 'projectAnalysis', label: 'Project Analysis', icon: '🔍' },
             { key: 'spotifyConnection', label: 'Spotify Connection', icon: '🎵' },
+            { key: 'musicPlayback', label: 'Music Playback', icon: '🎶' },
             { key: 'warnings', label: 'Warnings', icon: '⚠️' },
             { key: 'errors', label: 'Errors', icon: '❌' }
         ];
@@ -1215,8 +1217,9 @@ export class ControlPanelProvider implements vscode.WebviewViewProvider {
 
     private _areAllNotificationsEnabled(config: any): boolean {
         const categories = [
-            'extensionActivation', 'backgroundChanges', 'projectAnalysis', 
-            'spotifyConnection', 'warnings', 'errors'
+            'extensionActivation', 'backgroundChanges', 'themeChanges',
+            'projectAnalysis', 'spotifyConnection', 'musicPlayback',
+            'warnings', 'errors'
         ];
         return categories.every(category => config[category] !== false);
     }
