@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import * as http from 'http';
 import * as url from 'url';
 import SpotifyWebApi from 'spotify-web-api-node';
-import * as crypto from 'crypto';
 
 export interface SpotifyTrack {
     id: string;
@@ -49,7 +48,6 @@ export class SpotifyService {
     private connectionStatus: ConnectionStatus = 'disconnected';
     private user: SpotifyUser | null = null;
     private server: http.Server | null = null;
-    private codeVerifier: string = '';
     private readonly redirectUri = 'http://127.0.0.1:3000/callback';
     private readonly scopes = [
         'user-read-private',
@@ -95,39 +93,6 @@ export class SpotifyService {
         console.log('🎵 SpotifyService: Initialized in manual-connect mode');
     }
 
-    private async loadStoredTokens(): Promise<void> {
-        console.log('🎵 SpotifyService: Loading stored tokens...');
-        const accessToken = this.context.globalState.get<string>('spotify_access_token');
-        const refreshToken = this.context.globalState.get<string>('spotify_refresh_token');
-        const user = this.context.globalState.get<SpotifyUser>('spotify_user');
-
-        console.log('🎵 SpotifyService: Found tokens:', { hasAccess: !!accessToken, hasRefresh: !!refreshToken, hasUser: !!user });
-
-        if (accessToken && refreshToken) {
-            this.spotifyApi.setAccessToken(accessToken);
-            this.spotifyApi.setRefreshToken(refreshToken);
-            
-            // Validate before setting as authenticated
-            console.log('🎵 SpotifyService: Validating tokens...');
-            const isValid = await this.validateTokens();
-            console.log('🎵 SpotifyService: Token validation result:', isValid);
-            
-            if (isValid) {
-                this.isAuthenticated = true;
-                this.connectionStatus = 'connected';
-                this.user = user || null;
-                console.log('🎵 SpotifyService: Successfully authenticated on startup');
-            } else {
-                // If validation fails, clear the stale tokens
-                console.log('🎵 SpotifyService: Token validation failed, clearing tokens');
-                await this.disconnect();
-                this.connectionStatus = 'error';
-            }
-        } else {
-            console.log('🎵 SpotifyService: No stored tokens found');
-            this.connectionStatus = 'disconnected';
-        }
-    }
 
     async authenticate(): Promise<boolean> {
         try {
@@ -146,8 +111,6 @@ export class SpotifyService {
                 return false;
             }
 
-            this.codeVerifier = this.generateCodeVerifier();
-            const codeChallenge = await this.generateCodeChallenge(this.codeVerifier);
             
             const authUrl = this.spotifyApi.createAuthorizeURL(this.scopes, 'state');
             
@@ -638,40 +601,6 @@ export class SpotifyService {
         }
     }
 
-    private async validateTokens(): Promise<boolean> {
-        try {
-            console.log('🎵 SpotifyService: Making getMe() API call for validation...');
-            // A simple way to validate is to make a lightweight API call.
-            await this.spotifyApi.getMe();
-            console.log('🎵 SpotifyService: getMe() succeeded, tokens are valid');
-            return true;
-        } catch (error: any) {
-            console.log('🎵 SpotifyService: getMe() failed:', error.statusCode, error.message);
-            if (error.statusCode === 401) {
-                // Token expired, try to refresh
-                console.log('🎵 SpotifyService: Attempting to refresh token...');
-                try {
-                    await this.refreshAccessToken();
-                    console.log('🎵 SpotifyService: Token refresh succeeded');
-                    return true;
-                } catch (refreshError) {
-                    console.error('🎵 SpotifyService: Failed to refresh token:', refreshError);
-                    return false;
-                }
-            }
-            console.error('🎵 SpotifyService: Token validation failed with non-401 error:', error);
-            return false;
-        }
-    }
-
-    private generateCodeVerifier(): string {
-        return crypto.randomBytes(32).toString('base64url');
-    }
-
-    private async generateCodeChallenge(verifier: string): Promise<string> {
-        const hash = crypto.createHash('sha256').update(verifier).digest();
-        return hash.toString('base64url');
-    }
 
     getIsAuthenticated(): boolean {
         return this.isAuthenticated;

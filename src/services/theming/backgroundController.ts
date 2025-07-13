@@ -1,11 +1,8 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { ProjectAnalysis } from '../analysis/projectAnalyzer';
 
 export class BackgroundController {
-    private context: vscode.ExtensionContext;
     private updateInterval: NodeJS.Timeout | null = null;
-    private currentBackgroundIndex: number = 0;
     private isEnabled: boolean = false;
 
     private backgroundCollections: { [key: string]: string[] } = {
@@ -41,12 +38,10 @@ export class BackgroundController {
         ]
     };
 
-    private constructor(context: vscode.ExtensionContext) {
-        this.context = context;
-    }
+    private constructor() {}
 
-    public static async create(context: vscode.ExtensionContext): Promise<BackgroundController> {
-        const controller = new BackgroundController(context);
+    public static async create(): Promise<BackgroundController> {
+        const controller = new BackgroundController();
         const config = vscode.workspace.getConfiguration('codeSpa');
         if (config.get('background.enabled', true)) {
             await controller.enable();
@@ -105,7 +100,7 @@ export class BackgroundController {
         await this.setBackgroundFromCategory(backgroundCategory);
     }
 
-    async onFileChanged(document: vscode.TextDocument): Promise<void> {
+    async onFileChanged(_document: vscode.TextDocument): Promise<void> {
         if (!this.isEnabled) return;
         
         if (Math.random() < 0.1) {

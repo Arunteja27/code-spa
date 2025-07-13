@@ -499,20 +499,6 @@ export class UICustomizer {
         }
     }
 
-    private getPreferredTheme(presetName: string): string {
-        const themeMap: { [key: string]: string[] } = {
-            'cyberpunk': ['Monokai', 'Default Dark+'],
-            'nature': ['Default Dark+', 'Quiet Light'],
-            'space': ['Default Dark+', 'Tomorrow Night Blue'],
-            'minimal': ['Default Light+', 'Quiet Light'],
-            'retro': ['Monokai', 'Default Dark+'],
-            'ocean': ['Default Dark+', 'Solarized Dark']
-        };
-
-        const themes = themeMap[presetName] || ['Default Dark+'];
-        
-        return themes[0];
-    }
 
     private async resetToDefault(): Promise<void> {
         const config = vscode.workspace.getConfiguration();
