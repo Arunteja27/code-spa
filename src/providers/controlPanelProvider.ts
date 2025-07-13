@@ -3,7 +3,6 @@ import { UICustomizer } from '../services/theming/uiCustomizer';
 import { MusicPlayer } from '../services/music/musicPlayer';
 import { SpotifyTrack, SpotifyPlaylist } from '../services/spotify/spotifyService';
 import { NotificationService, NOTIFICATION_CATEGORIES } from '../services/notifications/notificationService';
-import { NotificationService } from '../services/notifications/notificationService';
 import { WebviewUtils } from '../webview/WebviewUtils';
 import { LLMThemeGenerator } from '../services/llm/llmThemeGenerator';
 import { GeneratedTheme } from '../services/llm/geminiService';
