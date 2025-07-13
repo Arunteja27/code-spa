@@ -172,10 +172,7 @@ export class MusicPlayer {
         this.currentCategory = null;
         this.isPlaying = false;
 
-        if (this.trackEndTimer) {
-            clearTimeout(this.trackEndTimer);
-            this.trackEndTimer = null;
-        }
+        this.clearAutoNextTimer();
         
         this.playbackPlaylist = null;
         this.playbackTrackIndex = 0;
@@ -194,9 +191,8 @@ export class MusicPlayer {
                 const newVolume = state.volume;
                 const newPlayingState = state.isPlaying;
 
-                if (!newPlayingState && this.trackEndTimer) {
-                    clearTimeout(this.trackEndTimer);
-                    this.trackEndTimer = null;
+                if (!newPlayingState) {
+                    this.clearAutoNextTimer();
                 }
 
                 try {
@@ -204,6 +200,10 @@ export class MusicPlayer {
                     if (playback.body && playback.body.item) {
                         const duration = playback.body.item.duration_ms;
                         const progress = playback.body.progress_ms;
+
+                        if (!this.isPlaying && newPlayingState && this.currentTrack) {
+                            this.scheduleAutoNext(this.currentTrack.duration, progress);
+                        }
                         
                         // Check if user skipped forward significantly (more than 5 seconds difference)
                         const progressDiff = Math.abs(progress - this.lastKnownProgress);
@@ -340,16 +340,13 @@ export class MusicPlayer {
             const success = await this.spotifyService.pausePlayback();
             if (success) {
                 this.isPlaying = false;
-                if (this.trackEndTimer) {
-                    clearTimeout(this.trackEndTimer);
-                    this.trackEndTimer = null;
-                }
+                this.clearAutoNextTimer();
             }
         } else {
             const resumeSuccess = await this.spotifyService.resumePlayback();
             if (resumeSuccess) {
                 this.isPlaying = true;
-                this.scheduleAutoNext(this.currentTrack?.duration, 0);
+                this.scheduleAutoNext(this.currentTrack?.duration, this.lastKnownProgress);
             } else if (this.currentTrack) {
                 const success = await this.spotifyService.playTrack(this.currentTrack.uri);
                 if (success) {
@@ -707,15 +704,18 @@ export class MusicPlayer {
         if (this.webviewPanel) {
             this.webviewPanel.dispose();
         }
+        this.clearAutoNextTimer();
+    }
+
+    private clearAutoNextTimer(): void {
         if (this.trackEndTimer) {
             clearTimeout(this.trackEndTimer);
+            this.trackEndTimer = null;
         }
     }
 
     private scheduleAutoNext(duration: number | undefined, progress: number): void {
-        if (this.trackEndTimer) {
-            clearTimeout(this.trackEndTimer);
-        }
+        this.clearAutoNextTimer();
         
         if (duration && duration > 0) {
             const remainingTime = duration - progress - 2000;
