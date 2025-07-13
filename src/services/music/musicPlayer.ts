@@ -171,6 +171,11 @@ export class MusicPlayer {
         this.currentView = 'library';
         this.currentCategory = null;
         this.isPlaying = false;
+
+        if (this.trackEndTimer) {
+            clearTimeout(this.trackEndTimer);
+            this.trackEndTimer = null;
+        }
         
         this.playbackPlaylist = null;
         this.playbackTrackIndex = 0;
@@ -188,6 +193,11 @@ export class MusicPlayer {
             if (state) {
                 const newVolume = state.volume;
                 const newPlayingState = state.isPlaying;
+
+                if (!newPlayingState && this.trackEndTimer) {
+                    clearTimeout(this.trackEndTimer);
+                    this.trackEndTimer = null;
+                }
 
                 try {
                     const playback = await (this.spotifyService as any).spotifyApi.getMyCurrentPlaybackState();
@@ -330,6 +340,10 @@ export class MusicPlayer {
             const success = await this.spotifyService.pausePlayback();
             if (success) {
                 this.isPlaying = false;
+                if (this.trackEndTimer) {
+                    clearTimeout(this.trackEndTimer);
+                    this.trackEndTimer = null;
+                }
             }
         } else {
             const resumeSuccess = await this.spotifyService.resumePlayback();
