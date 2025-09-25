@@ -1,11 +1,8 @@
-# Code Spa - VS Code Extension
+# Code Spa - Vibe coding just got _so much_ better 🌠
 
 <img width="1024" height="737" alt="code-spa-logo" src="https://github.com/user-attachments/assets/3673229e-78c5-4d6c-a43b-bb68ab30b3fd" />
 
-
-Vibe coding just got so much better 🌠
-
-## What's Inside
+## What's Inside - See demo below!
 
 ### 🤖 Smart Dynamic Backgrounds
 - AI analyzes your project and picks the perfect backdrop
