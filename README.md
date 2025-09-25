@@ -2,6 +2,8 @@
 
 Transform your coding sessions with AI-powered backgrounds and your favorite Spotify tunes! 🎵
 
+Vibe coding just got so much better 🌠
+
 ## What's Inside
 
 ### 🤖 Smart Dynamic Backgrounds
