@@ -1,6 +1,7 @@
 # Code Spa - VS Code Extension
 
-Transform your coding sessions with AI-powered backgrounds and your favorite Spotify tunes! 🎵
+<img width="1024" height="737" alt="code-spa-logo" src="https://github.com/user-attachments/assets/3673229e-78c5-4d6c-a43b-bb68ab30b3fd" />
+
 
 Vibe coding just got so much better 🌠
 
